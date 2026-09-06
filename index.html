@@ -1,0 +1,3767 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>マイッキーワールド</title>
+<style>
+  :root{
+    --ink:#141326;
+    --ink-2:#232145;
+    --paper:#f6f1e4;
+    --maikkii:#e2402f;
+    --gold:#ffc93c;
+    --mint:#7fd6a6;
+    --sky:#8fc6e8;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;}
+  html,body{height:100%;overflow:hidden;background:#0b0a16;}
+  body{
+    font-family:"Hiragino Kaku Gothic ProN","Yu Gothic",YuGothic,"Meiryo",system-ui,sans-serif;
+    color:var(--paper);
+    -webkit-user-select:none;user-select:none;
+    -webkit-tap-highlight-color:transparent;
+    touch-action:none;
+  }
+  canvas{display:block;width:100%;height:100%;}
+  #ui{position:fixed;inset:0;pointer-events:none;}
+
+  /* ---- 照準 ---- */
+  #crosshair{
+    position:absolute;left:50%;top:50%;width:22px;height:22px;
+    transform:translate(-50%,-50%);opacity:.85;
+  }
+  #crosshair::before,#crosshair::after{
+    content:"";position:absolute;background:#fff;mix-blend-mode:difference;
+  }
+  #crosshair::before{left:50%;top:0;width:2px;height:100%;margin-left:-1px;}
+  #crosshair::after{top:50%;left:0;height:2px;width:100%;margin-top:-1px;}
+
+  /* ---- 共通パネル ---- */
+  .panel{
+    background:rgba(20,19,38,.82);
+    border:3px solid var(--paper);
+    box-shadow:6px 6px 0 rgba(0,0,0,.45);
+    padding:10px 14px;
+  }
+
+  /* ---- 左上 情報 ---- */
+  #stats{
+    position:absolute;left:14px;top:14px;
+    font-size:12px;line-height:1.7;letter-spacing:.02em;
+    font-variant-numeric:tabular-nums;
+  }
+  #stats b{color:var(--gold);font-weight:700;}
+  #stats span{opacity:.65;}
+
+  /* ---- 右上 操作 ---- */
+  #keys{
+    position:absolute;right:14px;top:14px;font-size:11px;line-height:1.9;
+    max-width:210px;
+  }
+  #keys kbd{
+    display:inline-block;min-width:20px;text-align:center;
+    background:var(--paper);color:var(--ink);font-weight:700;
+    padding:0 4px;margin-right:6px;font-size:10px;
+    font-family:inherit;
+  }
+
+  /* ---- ホットバー ---- */
+  #hotbar{
+    position:absolute;left:50%;bottom:18px;transform:translateX(-50%);
+    display:flex;gap:6px;padding:6px;
+  }
+  .slot{
+    width:52px;height:52px;position:relative;
+    border:2px solid rgba(246,241,228,.35);
+    background:rgba(0,0,0,.3);
+    display:flex;align-items:center;justify-content:center;
+  }
+  .slot canvas{width:34px;height:34px;image-rendering:pixelated;}
+  .slot i{
+    position:absolute;left:2px;top:1px;font-style:normal;
+    font-size:10px;opacity:.55;
+  }
+  .slot.on{
+    border-color:var(--gold);
+    box-shadow:0 0 0 2px var(--ink),0 0 14px rgba(255,201,60,.55);
+    transform:translateY(-6px);
+  }
+  #slotname{
+    position:absolute;left:50%;bottom:82px;transform:translateX(-50%);
+    font-size:13px;letter-spacing:.08em;text-shadow:2px 2px 0 #000;
+    opacity:0;transition:opacity .25s;white-space:nowrap;
+  }
+  #slotname.show{opacity:1;}
+
+  /* ---- セリフ ---- */
+  #bubble{
+    position:absolute;left:50%;top:22%;transform:translateX(-50%) scale(.9);
+    background:var(--paper);color:var(--ink);
+    border:3px solid var(--ink);
+    box-shadow:5px 5px 0 rgba(0,0,0,.4);
+    padding:10px 18px;font-size:16px;font-weight:700;letter-spacing:.05em;
+    opacity:0;transition:opacity .2s,transform .2s;
+  }
+  #bubble::after{
+    content:"";position:absolute;left:50%;bottom:-14px;margin-left:-8px;
+    border:8px solid transparent;border-top-color:var(--ink);
+  }
+  #bubble.show{opacity:1;transform:translateX(-50%) scale(1);}
+
+  /* ---- オーバーレイ ---- */
+  #overlay{
+    position:absolute;inset:0;display:flex;flex-direction:column;
+    align-items:center;justify-content:center;gap:26px;
+    background:radial-gradient(120% 90% at 50% 20%,#2a2750 0%,#0b0a16 70%);
+    pointer-events:auto;
+  }
+  #overlay.hide{display:none;}
+  .title{
+    font-size:clamp(38px,9vw,86px);font-weight:900;letter-spacing:.06em;
+    color:var(--paper);line-height:1;
+    text-shadow:
+      3px 3px 0 var(--maikkii), 6px 6px 0 var(--maikkii),
+      9px 9px 0 var(--ink-2), 12px 12px 0 var(--ink-2),
+      15px 15px 0 rgba(0,0,0,.5);
+  }
+  .sub{font-size:13px;letter-spacing:.3em;opacity:.7;}
+  .startbtn{
+    pointer-events:auto;cursor:pointer;
+    background:var(--gold);color:var(--ink);
+    border:3px solid var(--paper);
+    box-shadow:6px 6px 0 rgba(0,0,0,.5);
+    font:inherit;font-size:18px;font-weight:800;letter-spacing:.14em;
+    padding:14px 42px;
+  }
+  .startbtn:active{transform:translate(3px,3px);box-shadow:3px 3px 0 rgba(0,0,0,.5);}
+  .startbtn:focus-visible{outline:3px solid var(--mint);outline-offset:4px;}
+  .subbtn{
+    pointer-events:auto;cursor:pointer;margin-top:-12px;
+    background:transparent;color:var(--paper);
+    border:2px solid rgba(246,241,228,.45);
+    font:inherit;font-size:12px;letter-spacing:.1em;padding:8px 20px;
+  }
+  .subbtn:hover{border-color:var(--maikkii);color:var(--maikkii);}
+  .subbtn:focus-visible{outline:3px solid var(--mint);outline-offset:4px;}
+  #netbox{
+    max-width:min(520px,88vw);font-size:12px;line-height:1.9;text-align:left;
+    background:rgba(20,19,38,.86);
+  }
+  .netrow{display:flex;gap:8px;align-items:center;flex-wrap:wrap;}
+  .netlbl{opacity:.55;min-width:64px;display:inline-block;}
+  #netbox b{color:var(--gold);}
+  #roomin{
+    font:inherit;font-size:13px;letter-spacing:.18em;width:8em;
+    background:#0d0c18;color:var(--paper);border:2px solid rgba(246,241,228,.4);
+    padding:4px 8px;text-transform:lowercase;
+  }
+  #roomin:focus{outline:none;border-color:var(--gold);}
+  #netbox .subbtn{margin-top:0;padding:5px 12px;font-size:11px;}
+  .nethint{font-size:10px;opacity:.5;line-height:1.6;margin-top:4px;}
+  .btnrow{display:flex;gap:10px;flex-wrap:wrap;justify-content:center;align-items:center;}
+  .btnrow .subbtn{margin-top:0;}
+  .startbtn.small{font-size:14px;padding:10px 26px;}
+
+  /* ---- 顔の撮影 ---- */
+  #facepanel{
+    position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);z-index:20;
+    display:none;flex-direction:column;align-items:center;gap:12px;
+    width:min(360px,90vw);padding:16px;
+    background:rgba(11,10,22,.97);
+    border:3px solid var(--paper);box-shadow:8px 8px 0 rgba(0,0,0,.5);
+  }
+  #camwrap{
+    position:relative;width:100%;height:min(44vh,280px);
+    background:#000;overflow:hidden;border:2px solid rgba(246,241,228,.3);
+  }
+  #cam{width:100%;height:100%;object-fit:contain;transform:scaleX(-1);display:block;}
+  #camoverlay{position:absolute;inset:0;width:100%;height:100%;transform:scaleX(-1);pointer-events:none;}
+  #camguide{position:absolute;inset:0;pointer-events:none;}
+  #camguide::before{
+    content:"";position:absolute;left:50%;top:46%;
+    width:54%;height:62%;transform:translate(-50%,-50%);
+    border:2px dashed rgba(255,255,255,.4);border-radius:50%;
+  }
+  #facepreview{
+    display:none;width:176px;height:176px;
+    border:3px solid var(--gold);background:#000;
+  }
+  #facemsg{font-size:12px;line-height:1.7;text-align:center;opacity:.9;}
+  #facenote{font-size:10px;opacity:.55;text-align:center;line-height:1.6;}
+  #howto{font-size:12px;line-height:2;opacity:.8;text-align:center;max-width:min(560px,86vw);}
+  #howto b{color:var(--gold);}
+  #bar{width:min(420px,80vw);height:14px;border:3px solid var(--paper);padding:2px;}
+  #bar div{height:100%;width:0%;background:var(--mint);transition:width .12s linear;}
+  #loadtxt{font-size:12px;letter-spacing:.2em;opacity:.75;}
+
+  /* ---- タッチ操作 ---- */
+  .touch{display:none;}
+  body.is-touch .touch{display:block;}
+  body.is-touch .slot{pointer-events:auto;}
+  #stick{
+    position:absolute;left:26px;bottom:96px;width:118px;height:118px;
+    border:3px solid rgba(246,241,228,.5);border-radius:50%;
+    background:rgba(0,0,0,.25);pointer-events:auto;
+  }
+  #stick i{
+    position:absolute;left:50%;top:50%;width:46px;height:46px;margin:-23px 0 0 -23px;
+    border-radius:50%;background:rgba(246,241,228,.75);
+  }
+  .tbtn{
+    position:absolute;pointer-events:auto;
+    width:66px;height:66px;border:3px solid var(--paper);
+    background:rgba(20,19,38,.7);color:var(--paper);
+    font:inherit;font-size:11px;font-weight:700;line-height:1.3;
+    display:flex;align-items:center;justify-content:center;flex-direction:column;
+  }
+  .tbtn:active{background:var(--gold);color:var(--ink);}
+  #bJump{right:26px;bottom:96px;}
+  #bDig{right:104px;bottom:172px;}
+  #bPut{right:26px;bottom:172px;}
+  @media (max-width:720px){
+    #keys{display:none;}
+    #hotbar{bottom:12px;gap:4px;padding:4px;transform:translateX(-50%) scale(.82);}
+    #stats{font-size:11px;}
+  }
+  @media (prefers-reduced-motion:reduce){
+    .slot,#bubble{transition:none;}
+  }
+</style>
+</head>
+<body>
+<canvas id="game"></canvas>
+
+<div id="ui">
+  <div id="crosshair" style="display:none"></div>
+
+  <div id="stats" class="panel" style="display:none">
+    マイッキー <b id="pos">0, 0, 0</b><br>
+    <span>時刻</span> <b id="clock">6:00</b> <span>／ FPS</span> <b id="fps">0</b><br>
+    <span>こわしたブロック</span> <b id="broke">0</b><br>
+    <span>すんでいる</span> <b id="mobs">-</b><br>
+    <span>村づくり</span> <b id="village">-</b><br>
+    <span>ワールド</span> <b id="saved">-</b><br>
+    <span>通信</span> <b id="netline">オフライン</b>
+  </div>
+
+  <div id="keys" class="panel" style="display:none">
+    <kbd>WASD</kbd>移動<br>
+    <kbd>Space</kbd>ジャンプ / 泳ぐ<br>
+    <kbd>Shift</kbd>ダッシュ<br>
+    <kbd>左</kbd>こわす　<kbd>右</kbd>おく<br>
+    <kbd>1-0</kbd>ブロック切替<br>
+    <kbd>F</kbd>視点　<kbd>V</kbd>しゃべる<br>
+    <kbd>E</kbd>ブタ　<kbd>R</kbd>なかま<br>
+    <kbd>G</kbd>カエル（<kbd>Shift</kbd>で10体）<br>
+    <kbd>C</kbd>全員帰す　<kbd>K</kbd>保存<br>
+    <kbd>左</kbd>で仲間を叩くとふり向く<br>
+    <kbd>M</kbd>音楽　<kbd>N</kbd>効果音
+  </div>
+
+  <div id="slotname"></div>
+  <div id="hotbar" style="display:none"></div>
+  <div id="bubble"></div>
+
+  <div class="touch" id="stick"><i></i></div>
+  <button class="touch tbtn" id="bJump">ジャンプ</button>
+  <button class="touch tbtn" id="bDig">こわす</button>
+  <button class="touch tbtn" id="bPut">おく</button>
+</div>
+
+<div id="overlay">
+  <div style="text-align:center">
+    <div class="title">マイッキー<br>ワールド</div>
+    <div class="sub" style="margin-top:18px">ブロックでできた小さな島</div>
+  </div>
+  <div id="bar"><div></div></div>
+  <div id="loadtxt">地面をつくっています…</div>
+  <button class="startbtn" id="start" style="display:none">ぼうけんをはじめる</button>
+  <div class="btnrow">
+    <button class="subbtn" id="facebtn" style="display:none">仲間の顔を自分にする</button>
+    <button class="subbtn" id="faceclear" style="display:none">顔をもとにもどす</button>
+    <button class="subbtn" id="reset" style="display:none">新しい島を作る</button>
+  </div>
+
+  <div id="netbox" class="panel" style="display:none">
+    <div class="netrow">
+      <span class="netlbl">あいことば</span>
+      <input id="roomin" maxlength="12" spellcheck="false" autocomplete="off">
+      <button class="subbtn" id="roombtn">つなぐ</button>
+      <button class="subbtn" id="netoff">ひとりで遊ぶ</button>
+    </div>
+    <div class="netrow"><span class="netlbl">あなた</span><b id="mynick">-</b></div>
+    <div class="netrow"><span class="netlbl">状態</span><span id="netstat">オフライン</span></div>
+    <div class="netrow"><span class="netlbl">いる人</span><span id="netpeers">ひとり</span></div>
+    <div class="nethint">同じあいことばを入れた別のPCのブラウザとつながります。URLの#部分でも共有できます。</div>
+  </div>
+
+  <div id="facepanel">
+    <div id="camwrap">
+      <video id="cam" playsinline muted></video>
+      <canvas id="camoverlay"></canvas>
+      <div id="camguide"></div>
+    </div>
+    <canvas id="facepreview" width="256" height="256"></canvas>
+    <div id="facemsg">枠に顔を合わせてください</div>
+    <div class="btnrow">
+      <button class="startbtn small" id="shoot">撮影</button>
+      <button class="startbtn small" id="faceok" style="display:none">これにする</button>
+      <button class="subbtn" id="faceretry" style="display:none">撮り直す</button>
+      <button class="subbtn" id="facecancel">やめる</button>
+    </div>
+    <div id="facenote">写真はこの端末の中だけで使われます。どこにも送信されません。</div>
+  </div>
+  <div id="howto" style="display:none">
+    <b>WASD</b>で歩く・<b>Space</b>でジャンプ・<b>左クリック</b>でこわす・<b>右クリック</b>でおく<br>
+    <b>F</b>で三人称視点にすると、マイッキーが見えます。<b>V</b>でしゃべります。<br>
+    仲間たちは自分で家や塔を建てます。叩くとこちらを向き、ブタは一列になってついてきます。<br>
+    カエルは水面では跳ね、もぐると平泳ぎでスイスイ一列についてきます。陸では急いで水へ。<br>
+    ブタは水が苦手で、濡れると必死に泳いで陸へ上がります。<br>
+    島にはブタとマイッキーの仲間が暮らしています。<b>E</b>と<b>R</b>で何体でも呼べます<br>
+    （<b>Shift</b>を押しながらで10体ずつ、<b>C</b>で全員お帰りいただけます）。<br>
+    こわした場所も建てたものも自動で保存され、閉じても次に開いたとき続きから遊べます。<br>
+    同じ「あいことば」を入れた別のPCとつながり、地形の変化とお互いの姿が同期します。<br>
+    「仲間の顔を自分にする」を押すと、カメラで撮った顔がマイッキー全員の顔になります。<br>
+    音が出ます。うるさいときは <b>M</b>（音楽）と <b>N</b>（効果音）で切り替えてください。
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+if (!window.THREE) {
+  document.getElementById('loadtxt').textContent = 'Three.js を読み込めませんでした。通信環境を確認して再読み込みしてください。';
+}
+</script>
+<script>
+(function(){
+'use strict';
+if (!window.THREE) return;
+
+/* =========================================================
+   1. 定数とワールド設定
+   ========================================================= */
+const CH = 16;                 // チャンクの一辺
+const CX = 8, CZ = 8;          // チャンク数
+const WX = CH * CX, WZ = CH * CZ, WY = 48;
+const SEA = 14;                // 海面の高さ
+let SEED = 20260905;   // 新しい島を作るたびに変わる
+
+const AIR=0, GRASS=1, DIRT=2, STONE=3, SAND=4, LOG=5, LEAVES=6,
+      PLANK=7, GLASS=8, BRICK=9, GOLD=10, WATER=11;
+
+// タイル番号: 0草上 1土 2草横 3石 4砂 5原木上 6原木横 7葉 8板 9ガラス 10レンガ 11金 12水
+const TILES = {};
+TILES[GRASS]=[0,1,2]; TILES[DIRT]=[1,1,1]; TILES[STONE]=[3,3,3]; TILES[SAND]=[4,4,4];
+TILES[LOG]=[5,5,6];   TILES[LEAVES]=[7,7,7]; TILES[PLANK]=[8,8,8]; TILES[GLASS]=[9,9,9];
+TILES[BRICK]=[10,10,10]; TILES[GOLD]=[11,11,11]; TILES[WATER]=[12,12,12];
+
+const NAMES = {};
+NAMES[GRASS]='草ブロック'; NAMES[DIRT]='土'; NAMES[STONE]='石'; NAMES[SAND]='砂';
+NAMES[LOG]='原木'; NAMES[LEAVES]='葉っぱ'; NAMES[PLANK]='板材'; NAMES[GLASS]='ガラス';
+NAMES[BRICK]='レンガ'; NAMES[GOLD]='金ブロック'; NAMES[WATER]='水';
+
+const HOTBAR = [GRASS, DIRT, STONE, SAND, LOG, LEAVES, PLANK, GLASS, BRICK, GOLD];
+
+const isSolid  = b => b !== AIR && b !== WATER;
+const isOpaque = b => b !== AIR && b !== WATER && b !== GLASS;
+
+/* =========================================================
+   2. ノイズ（地形生成用）
+   ========================================================= */
+function hash2(x, y, s){
+  let h = Math.imul(x|0, 374761393) ^ Math.imul(y|0, 668265263) ^ Math.imul(s|0, 1442695041);
+  h = Math.imul(h ^ (h >>> 13), 1274126177);
+  return ((h ^ (h >>> 16)) >>> 0) / 4294967295;
+}
+function vnoise(x, y, s){
+  const xi = Math.floor(x), yi = Math.floor(y);
+  const xf = x - xi, yf = y - yi;
+  const u = xf*xf*(3-2*xf), v = yf*yf*(3-2*yf);
+  const a = hash2(xi,   yi,   s), b = hash2(xi+1, yi,   s);
+  const c = hash2(xi,   yi+1, s), d = hash2(xi+1, yi+1, s);
+  return (a + (b-a)*u) + ((c + (d-c)*u) - (a + (b-a)*u)) * v;
+}
+function fbm(x, y, oct, s){
+  let sum = 0, amp = 1, freq = 1, norm = 0;
+  for (let i = 0; i < oct; i++){
+    sum  += vnoise(x*freq, y*freq, s+i*17) * amp;
+    norm += amp; amp *= 0.5; freq *= 2;
+  }
+  return sum / norm;
+}
+
+/* =========================================================
+   3. テクスチャ生成（16px タイルを 4x4 のアトラスに描く）
+   ========================================================= */
+const TS = 16, ATLAS_N = 4, ATLAS_PX = TS * ATLAS_N;
+
+function makeAtlas(){
+  const cv = document.createElement('canvas');
+  cv.width = cv.height = ATLAS_PX;
+  const g = cv.getContext('2d');
+
+  function px(t, x, y, color){
+    const tx = (t % ATLAS_N) * TS, ty = ((t / ATLAS_N) | 0) * TS;
+    g.fillStyle = color;
+    g.fillRect(tx + x, ty + y, 1, 1);
+  }
+  function shade(hex, k){
+    const n = parseInt(hex.slice(1), 16);
+    const r = Math.max(0, Math.min(255, ((n >> 16) & 255) * k)) | 0;
+    const gr= Math.max(0, Math.min(255, ((n >> 8) & 255) * k)) | 0;
+    const b = Math.max(0, Math.min(255, (n & 255) * k)) | 0;
+    return 'rgb(' + r + ',' + gr + ',' + b + ')';
+  }
+  function noiseFill(t, hex, amount, seed){
+    for (let y = 0; y < TS; y++) for (let x = 0; x < TS; x++){
+      const k = 1 + (hash2(x + t*31, y + t*57, seed) - 0.5) * amount;
+      px(t, x, y, shade(hex, k));
+    }
+  }
+
+  noiseFill(0, '#67ab3d', 0.30, 11);                       // 草の上
+  noiseFill(1, '#8a6743', 0.34, 22);                       // 土
+  noiseFill(2, '#8a6743', 0.34, 22);                       // 草の横
+  for (let x = 0; x < TS; x++){
+    const h = 3 + Math.floor(hash2(x, 5, 33) * 3);
+    for (let y = 0; y < h; y++){
+      const k = 1 + (hash2(x, y, 44) - 0.5) * 0.3;
+      px(2, x, y, shade('#67ab3d', k));
+    }
+  }
+  noiseFill(3, '#8f8f96', 0.26, 55);                       // 石
+  for (let i = 0; i < 26; i++){
+    const x = Math.floor(hash2(i, 1, 66) * TS), y = Math.floor(hash2(i, 2, 66) * TS);
+    px(3, x, y, shade('#8f8f96', 0.78));
+  }
+  noiseFill(4, '#ddd0a0', 0.18, 77);                       // 砂
+  noiseFill(5, '#bb9457', 0.16, 88);                       // 原木の断面
+  for (let r = 2; r <= 6; r += 2){
+    for (let a = 0; a < 64; a++){
+      const th = a / 64 * Math.PI * 2;
+      px(5, Math.round(8 + Math.cos(th)*r), Math.round(8 + Math.sin(th)*r), shade('#bb9457', 0.72));
+    }
+  }
+  noiseFill(6, '#7a5a34', 0.26, 99);                       // 原木の側面
+  for (let x = 2; x < TS; x += 5)
+    for (let y = 0; y < TS; y++) px(6, x, y, shade('#7a5a34', 0.7));
+  noiseFill(7, '#49973a', 0.42, 111);                      // 葉
+  for (let i = 0; i < 34; i++){
+    const x = Math.floor(hash2(i, 3, 121) * TS), y = Math.floor(hash2(i, 4, 121) * TS);
+    px(7, x, y, shade('#2f6b25', 1));
+  }
+  noiseFill(8, '#c39a5f', 0.14, 131);                      // 板材
+  for (let y = 0; y < TS; y += 4)
+    for (let x = 0; x < TS; x++) px(8, x, y, shade('#c39a5f', 0.66));
+  for (let y = 0; y < TS; y++) for (let x = 0; x < TS; x++){ // ガラス
+    const edge = (x === 0 || y === 0 || x === TS-1 || y === TS-1);
+    const glint = (x + y === 5 || x + y === 6);
+    px(9, x, y, edge ? '#e8f6ff' : (glint ? '#cfe9f7' : '#a9d6ea'));
+  }
+  noiseFill(10, '#b3503c', 0.14, 141);                     // レンガ
+  for (let y = 0; y < TS; y++) for (let x = 0; x < TS; x++){
+    const row = (y / 4) | 0;
+    const off = (row % 2) * 4;
+    if (y % 4 === 0 || ((x + off) % 8) === 0) px(10, x, y, '#cbc3b4');
+  }
+  noiseFill(11, '#f3cf3d', 0.12, 151);                     // 金
+  for (let i = 0; i < 5; i++) for (let j = 0; j < 3; j++)
+    px(11, 3 + i + j, 4 + j, '#fff3b0');
+  noiseFill(12, '#2f6ccc', 0.16, 161);                     // 水
+  for (let x = 0; x < TS; x++){
+    const y = 4 + Math.round(Math.sin(x / 2.4) * 2);
+    px(12, x, y, shade('#2f6ccc', 1.3));
+  }
+
+  const tex = new THREE.CanvasTexture(cv);
+  tex.magFilter = THREE.NearestFilter;
+  tex.minFilter = THREE.NearestFilter;
+  tex.generateMipmaps = false;
+  return { texture: tex, canvas: cv };
+}
+const ATLAS = makeAtlas();
+
+// UV（半ピクセル内側に寄せて隣のタイルの染み出しを防ぐ）
+const EPS = 0.35;
+function tileUV(t, uu, vv){
+  const tx = t % ATLAS_N, ty = (t / ATLAS_N) | 0;
+  const u = (tx*TS + EPS + uu*(TS - 2*EPS)) / ATLAS_PX;
+  const v = ((ATLAS_N - 1 - ty)*TS + EPS + vv*(TS - 2*EPS)) / ATLAS_PX;
+  return [u, v];
+}
+
+/* =========================================================
+   4. ワールドデータ
+   ========================================================= */
+const blocks = new Uint8Array(WX * WY * WZ);
+const idx = (x, y, z) => (x * WZ + z) * WY + y;
+
+function getBlock(x, y, z){
+  if (y < 0) return STONE;                                  // 奈落は岩盤扱い
+  if (y >= WY) return AIR;
+  if (x < 0 || z < 0 || x >= WX || z >= WZ) return STONE;    // 世界の外は壁
+  return blocks[idx(x, y, z)];
+}
+function setBlock(x, y, z, v){
+  if (x < 0 || z < 0 || y < 0 || x >= WX || y >= WY || z >= WZ) return;
+  blocks[idx(x, y, z)] = v;
+}
+const inWorld = (x, y, z) => x >= 0 && z >= 0 && y >= 0 && x < WX && y < WY && z < WZ;
+
+function heightAt(x, z){
+  const base   = fbm(x * 0.013, z * 0.013, 4, SEED);
+  const detail = fbm(x * 0.07 + 40, z * 0.07 + 40, 3, SEED + 5);
+  const n = Math.max(0, Math.min(1, (base - 0.30) / 0.44));   // 起伏を広げる
+  return Math.floor(2 + Math.pow(n, 1.3) * 30 + detail * 5);
+}
+
+function generateWorld(){
+  for (let x = 0; x < WX; x++){
+    for (let z = 0; z < WZ; z++){
+      const h = heightAt(x, z);
+      for (let y = 0; y <= h; y++){
+        let b;
+        if (y > h - 4)      b = (h <= SEA + 1) ? SAND : GRASS;
+        else if (y > h - 7) b = DIRT;
+        else                b = STONE;
+        if (y < h && b === GRASS) b = DIRT;
+        setBlock(x, y, z, b);
+      }
+      for (let y = h + 1; y <= SEA; y++) setBlock(x, y, z, WATER);
+      // 岩肌に金が少しだけ顔を出す
+      if (h > SEA + 8 && hash2(x, z, 909 + SEED) > 0.995) setBlock(x, h, z, GOLD);
+    }
+  }
+  // 木
+  for (let x = 3; x < WX - 3; x++){
+    for (let z = 3; z < WZ - 3; z++){
+      if (hash2(x, z, 707 + SEED) < 0.9885) continue;
+      const h = heightAt(x, z);
+      if (h <= SEA + 1 || getBlock(x, h, z) !== GRASS) continue;
+      const trunk = 4 + Math.floor(hash2(x, z, 808 + SEED) * 3);
+      for (let i = 1; i <= trunk; i++) setBlock(x, h + i, z, LOG);
+      const top = h + trunk;
+      for (let dx = -2; dx <= 2; dx++)
+        for (let dz = -2; dz <= 2; dz++)
+          for (let dy = -2; dy <= 1; dy++){
+            const d = dx*dx + dz*dz + dy*dy*1.6;
+            if (d > 6.2) continue;
+            if (dx === 0 && dz === 0 && dy <= 0) continue;
+            if (getBlock(x+dx, top+dy, z+dz) === AIR) setBlock(x+dx, top+dy, z+dz, LEAVES);
+          }
+    }
+  }
+}
+
+/* =========================================================
+   4-B. セーブデータ（アプリのストレージ / localStorage）
+   ========================================================= */
+const SAVE_KEY = 'maikkii-world-v1';
+const AUTOSAVE = 15;               // 自動保存の間隔（秒）
+const edits = new Map();           // 手を加えたブロックだけを覚えておく
+let editsB64 = null;               // エンコード結果のキャッシュ
+
+// プレイヤーが変更したブロックはこの関数を通す
+function editBlock(x, y, z, v, remote){
+  if (!inWorld(x, y, z)) return;
+  const i = idx(x, y, z);
+  if (blocks[i] === v) return;
+  blocks[i] = v;
+  edits.set(i, v);
+  editsB64 = null;
+  Store.dirty = true;
+  if (!remote) Net.queueEdit(i, v);          // 自分が変えたぶんだけ送る
+}
+
+// 1マスにつき 4バイト（位置3 + 種類1）に詰めて base64 にする
+function encodeEdits(){
+  if (editsB64 !== null) return editsB64;
+  const u8 = new Uint8Array(edits.size * 4);
+  let p = 0;
+  edits.forEach(function(v, i){
+    u8[p++] = i & 255; u8[p++] = (i >> 8) & 255; u8[p++] = (i >> 16) & 255; u8[p++] = v;
+  });
+  let bin = '';
+  for (let i = 0; i < u8.length; i += 0x8000)
+    bin += String.fromCharCode.apply(null, u8.subarray(i, i + 0x8000));
+  editsB64 = u8.length ? btoa(bin) : '';
+  return editsB64;
+}
+function editsToBytes(){
+  const u8 = new Uint8Array(edits.size * 4);
+  let p = 0;
+  edits.forEach(function(v, i){
+    u8[p++] = i & 255; u8[p++] = (i >> 8) & 255; u8[p++] = (i >> 16) & 255; u8[p++] = v;
+  });
+  return u8;
+}
+function applyEditBytes(u8){
+  let n = 0;
+  for (let p = 0; p + 3 < u8.length; p += 4){
+    const i = u8[p] | (u8[p+1] << 8) | (u8[p+2] << 16), v = u8[p+3];
+    if (i >= 0 && i < blocks.length && v <= WATER){ blocks[i] = v; edits.set(i, v); n++; }
+  }
+  editsB64 = null;
+  return n;
+}
+function decodeEdits(b64){
+  if (!b64) return 0;
+  let bin;
+  try { bin = atob(b64); } catch(e){ return 0; }
+  let n = 0;
+  for (let p = 0; p + 3 < bin.length; p += 4){
+    const i = bin.charCodeAt(p) | (bin.charCodeAt(p+1) << 8) | (bin.charCodeAt(p+2) << 16);
+    const v = bin.charCodeAt(p+3);
+    if (i >= 0 && i < blocks.length && v <= WATER){ blocks[i] = v; edits.set(i, v); n++; }
+  }
+  editsB64 = b64;
+  return n;
+}
+
+const r2 = function(v){ return Math.round(v * 100) / 100; };
+
+function makeSave(){
+  return {
+    v: 1, seed: SEED, wx: WX, wy: WY, wz: WZ,
+    t: r2(time),
+    p: { x:r2(player.x), y:r2(player.y), z:r2(player.z), yaw:r2(player.yaw), pitch:r2(player.pitch),
+         slot: hotIndex, broke: player.broke, third: player.thirdPerson },
+    e: encodeEdits(),
+    f: faceShot,
+    vg: Village.ready ? { x:Village.x, y:Village.y, z:Village.z, k:Village.kind, w:Village.w } : null,
+    m: MOBS.map(function(m){
+      return { k:m.kind, x:r2(m.x), y:r2(m.y), z:r2(m.z), a:r2(m.yaw), s:r2(m.scale), c:m.shirt };
+    }),
+    at: Date.now()
+  };
+}
+
+const Store = {
+  mode: 'none',            // 'app' = アプリのストレージ / 'local' = localStorage / 'none' = 保存不可
+  dirty: false, busy: false, timer: AUTOSAVE, px: 0, pz: 0, at: 0,
+  detect: function(){
+    if (window.storage && typeof window.storage.get === 'function') return 'app';
+    try {
+      window.localStorage.setItem('__maikkii__', '1');
+      window.localStorage.removeItem('__maikkii__');
+      return 'local';
+    } catch(e){ return 'none'; }
+  },
+  read: function(){
+    const self = this;
+    this.mode = this.detect();
+    if (this.mode === 'app'){
+      return Promise.resolve()
+        .then(function(){ return window.storage.get(SAVE_KEY, false); })
+        .then(function(r){ return (r && r.value) ? JSON.parse(r.value) : null; })
+        .catch(function(){ return null; });        // 未保存のキーは例外になる
+    }
+    if (this.mode === 'local'){
+      try {
+        const raw = window.localStorage.getItem(SAVE_KEY);
+        return Promise.resolve(raw ? JSON.parse(raw) : null);
+      } catch(e){ return Promise.resolve(null); }
+    }
+    return Promise.resolve(null);
+  },
+  write: function(){
+    if (this.mode === 'none' || this.busy) return;
+    let json;
+    try { json = JSON.stringify(makeSave()); } catch(e){ return; }
+    this.dirty = false; this.timer = AUTOSAVE;
+    this.px = player.x; this.pz = player.z;
+    const self = this;
+    if (this.mode === 'app'){
+      this.busy = true;
+      Promise.resolve()
+        .then(function(){ return window.storage.set(SAVE_KEY, json, false); })
+        .then(function(){ self.busy = false; self.stamp(); })
+        .catch(function(){ self.busy = false; self.stamp('保存に失敗'); });
+    } else {
+      try { window.localStorage.setItem(SAVE_KEY, json); this.stamp(); }
+      catch(e){ this.stamp('容量オーバー'); }
+    }
+  },
+  clear: function(){
+    edits.clear(); editsB64 = null;
+    if (this.mode === 'app'){
+      try { Promise.resolve(window.storage.delete(SAVE_KEY, false)).catch(function(){}); } catch(e){}
+    } else if (this.mode === 'local'){
+      try { window.localStorage.removeItem(SAVE_KEY); } catch(e){}
+    }
+    this.dirty = false; this.timer = AUTOSAVE; this.at = 0;
+  },
+  tick: function(dt){
+    if (this.mode === 'none') return;
+    this.timer -= dt;
+    if (this.timer > 0) return;
+    this.timer = AUTOSAVE;
+    const moved = Math.hypot(player.x - this.px, player.z - this.pz) > 3;
+    if (this.dirty || moved) this.write();
+  },
+  stamp: function(msg){
+    this.at = Date.now();
+    const el = document.getElementById('saved');
+    if (!el) return;
+    if (msg){ el.textContent = msg; return; }
+    const d = new Date();
+    el.textContent = ('0'+d.getHours()).slice(-2) + ':' + ('0'+d.getMinutes()).slice(-2)
+                   + ':' + ('0'+d.getSeconds()).slice(-2) + ' に保存';
+  }
+};
+
+/* =========================================================
+   5. メッシュ生成（面カリング + アンビエントオクルージョン）
+   ========================================================= */
+const FACES = [
+  { n:[ 1,0,0], axis:0, v:[[1,0,1],[1,0,0],[1,1,0],[1,1,1]], shade:0.78 },
+  { n:[-1,0,0], axis:0, v:[[0,0,0],[0,0,1],[0,1,1],[0,1,0]], shade:0.78 },
+  { n:[0, 1,0], axis:1, v:[[0,1,1],[1,1,1],[1,1,0],[0,1,0]], shade:1.00 },
+  { n:[0,-1,0], axis:1, v:[[0,0,0],[1,0,0],[1,0,1],[0,0,1]], shade:0.52 },
+  { n:[0,0, 1], axis:2, v:[[0,0,1],[1,0,1],[1,1,1],[0,1,1]], shade:0.90 },
+  { n:[0,0,-1], axis:2, v:[[1,0,0],[0,0,0],[0,1,0],[1,1,0]], shade:0.90 }
+];
+const UVQ = [[0,0],[1,0],[1,1],[0,1]];
+const AO_LEVEL = [0.44, 0.62, 0.80, 1.0];
+const TANGENTS = [[1,2],[0,2],[0,1]];
+
+function newBuf(){ return { p:[], n:[], u:[], c:[], i:[] }; }
+
+function pushQuad(buf, base, face, tile, ao, waterLow){
+  const start = buf.p.length / 3;
+  for (let k = 0; k < 4; k++){
+    const v = face.v[k];
+    let vy = v[1];
+    if (waterLow && vy === 1) vy = 0.875;
+    buf.p.push(base[0] + v[0], base[1] + vy, base[2] + v[2]);
+    buf.n.push(face.n[0], face.n[1], face.n[2]);
+    const uv = tileUV(tile, UVQ[k][0], UVQ[k][1]);
+    buf.u.push(uv[0], uv[1]);
+    const s = face.shade * AO_LEVEL[ao[k]];
+    buf.c.push(s, s, s);
+  }
+  if (ao[0] + ao[2] >= ao[1] + ao[3])
+    buf.i.push(start, start+1, start+2, start, start+2, start+3);
+  else
+    buf.i.push(start+1, start+2, start+3, start+1, start+3, start);
+}
+
+function faceAO(x, y, z, face){
+  const n = face.n, t = TANGENTS[face.axis];
+  const a0 = t[0], a1 = t[1];
+  const out = [0,0,0,0];
+  for (let k = 0; k < 4; k++){
+    const v = face.v[k];
+    const s0 = v[a0] === 1 ? 1 : -1;
+    const s1 = v[a1] === 1 ? 1 : -1;
+    const o0 = [0,0,0]; o0[a0] = s0;
+    const o1 = [0,0,0]; o1[a1] = s1;
+    const A = isOpaque(getBlock(x+n[0]+o0[0], y+n[1]+o0[1], z+n[2]+o0[2])) ? 1 : 0;
+    const B = isOpaque(getBlock(x+n[0]+o1[0], y+n[1]+o1[1], z+n[2]+o1[2])) ? 1 : 0;
+    const C = isOpaque(getBlock(x+n[0]+o0[0]+o1[0], y+n[1]+o0[1]+o1[1], z+n[2]+o0[2]+o1[2])) ? 1 : 0;
+    out[k] = (A && B) ? 0 : 3 - (A + B + C);
+  }
+  return out;
+}
+
+function toGeometry(buf){
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(buf.p, 3));
+  g.setAttribute('normal',   new THREE.Float32BufferAttribute(buf.n, 3));
+  g.setAttribute('uv',       new THREE.Float32BufferAttribute(buf.u, 2));
+  g.setAttribute('color',    new THREE.Float32BufferAttribute(buf.c, 3));
+  g.setIndex(buf.i);
+  g.computeBoundingSphere();
+  return g;
+}
+
+/* =========================================================
+   6. シーンの土台
+   ========================================================= */
+const canvas   = document.getElementById('game');
+const renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: false });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setClearColor(0x8fc6e8);
+
+const scene  = new THREE.Scene();
+scene.fog = new THREE.Fog(0x8fc6e8, 42, 118);
+
+const camera = new THREE.PerspectiveCamera(72, window.innerWidth / window.innerHeight, 0.08, 400);
+scene.add(camera);
+
+const hemi = new THREE.HemisphereLight(0xbfe4ff, 0x54462f, 0.85);
+scene.add(hemi);
+const sun = new THREE.DirectionalLight(0xffe9c4, 0.85);
+sun.position.set(60, 90, 40);
+scene.add(sun);
+const ambient = new THREE.AmbientLight(0xffffff, 0.32);
+scene.add(ambient);
+
+const matSolid = new THREE.MeshLambertMaterial({ map: ATLAS.texture, vertexColors: true });
+const matGlass = new THREE.MeshLambertMaterial({ map: ATLAS.texture, vertexColors: true,
+                                                 transparent: true, opacity: 0.55, depthWrite: false });
+const matWater = new THREE.MeshLambertMaterial({ map: ATLAS.texture, vertexColors: true,
+                                                 transparent: true, opacity: 0.72, depthWrite: false,
+                                                 side: THREE.DoubleSide });
+
+// 太陽と月
+const sunMesh  = new THREE.Mesh(new THREE.SphereGeometry(9, 12, 12),
+                                new THREE.MeshBasicMaterial({ color: 0xfff0b8, fog: false }));
+const moonMesh = new THREE.Mesh(new THREE.SphereGeometry(6, 12, 12),
+                                new THREE.MeshBasicMaterial({ color: 0xdfe6ff, fog: false }));
+scene.add(sunMesh, moonMesh);
+
+// 星
+const starGeo = new THREE.BufferGeometry();
+const starPos = [];
+for (let i = 0; i < 500; i++){
+  const th = Math.random() * Math.PI * 2, ph = Math.random() * 0.5 * Math.PI;
+  const r = 260;
+  starPos.push(Math.cos(th)*Math.cos(ph)*r, Math.sin(ph)*r + 20, Math.sin(th)*Math.cos(ph)*r);
+}
+starGeo.setAttribute('position', new THREE.Float32BufferAttribute(starPos, 3));
+const starMat = new THREE.PointsMaterial({ color: 0xffffff, size: 1.6, transparent: true, opacity: 0, fog: false });
+const stars = new THREE.Points(starGeo, starMat);
+scene.add(stars);
+
+// 雲
+const clouds = new THREE.Group();
+const cloudMat = new THREE.MeshLambertMaterial({ color: 0xffffff, transparent: true, opacity: 0.85 });
+for (let i = 0; i < 22; i++){
+  const w = 6 + Math.random()*14, d = 5 + Math.random()*10;
+  const m = new THREE.Mesh(new THREE.BoxGeometry(w, 2, d), cloudMat);
+  m.position.set(Math.random()*WX*1.6 - WX*0.3, 40 + Math.random()*7, Math.random()*WZ*1.6 - WZ*0.3);
+  clouds.add(m);
+}
+scene.add(clouds);
+
+// 選択中のブロック枠
+const highlight = new THREE.LineSegments(
+  new THREE.EdgesGeometry(new THREE.BoxGeometry(1.004, 1.004, 1.004)),
+  new THREE.LineBasicMaterial({ color: 0x111111, transparent: true, opacity: 0.55 })
+);
+highlight.visible = false;
+scene.add(highlight);
+
+/* =========================================================
+   7. チャンク管理
+   ========================================================= */
+const chunkMeshes = [];   // [ci] = {solid, glass, water}
+
+function buildChunk(cx, cz){
+  const solid = newBuf(), glass = newBuf(), water = newBuf();
+  const x0 = cx*CH, z0 = cz*CH;
+  for (let x = x0; x < x0 + CH; x++){
+    for (let z = z0; z < z0 + CH; z++){
+      for (let y = 0; y < WY; y++){
+        const b = getBlock(x, y, z);
+        if (b === AIR) continue;
+        const tiles = TILES[b];
+        const isWater = (b === WATER);
+        const lowTop = isWater && getBlock(x, y+1, z) !== WATER;
+        for (let f = 0; f < 6; f++){
+          const face = FACES[f];
+          const nb = getBlock(x+face.n[0], y+face.n[1], z+face.n[2]);
+          if (isWater){ if (nb !== AIR) continue; }
+          else if (nb !== AIR && (isOpaque(nb) || nb === b)) continue;
+          const tile = face.axis === 1 ? (face.n[1] === 1 ? tiles[0] : tiles[1]) : tiles[2];
+          const ao = isWater ? [3,3,3,3] : faceAO(x, y, z, face);
+          const buf = isWater ? water : (b === GLASS ? glass : solid);
+          pushQuad(buf, [x, y, z], face, tile, ao, lowTop);
+        }
+      }
+    }
+  }
+  const ci = cx*CZ + cz;
+  const old = chunkMeshes[ci];
+  if (old){
+    ['solid','glass','water'].forEach(function(k){
+      if (old[k]){ scene.remove(old[k]); old[k].geometry.dispose(); }
+    });
+  }
+  const out = { solid:null, glass:null, water:null };
+  if (solid.i.length){ out.solid = new THREE.Mesh(toGeometry(solid), matSolid); scene.add(out.solid); }
+  if (glass.i.length){ out.glass = new THREE.Mesh(toGeometry(glass), matGlass); out.glass.renderOrder = 1; scene.add(out.glass); }
+  if (water.i.length){ out.water = new THREE.Mesh(toGeometry(water), matWater); out.water.renderOrder = 2; scene.add(out.water); }
+  chunkMeshes[ci] = out;
+}
+
+// 再構築が必要なチャンクを溜めておき、毎フレーム少しずつ処理する
+// （住人が一斉に掘っても描画が詰まらないようにするため）
+const dirtyQ = [], dirtySet = {};
+const COALESCE = 130;                   // 住人の作業はこの時間だけまとめてから作り直す
+function markDirty(x, z, urgent){
+  const cx = Math.floor(x / CH), cz = Math.floor(z / CH);
+  const due = urgent ? 0 : performance.now() + COALESCE;
+  for (let dx = -1; dx <= 1; dx++) for (let dz = -1; dz <= 1; dz++){
+    const nx = cx + dx, nz = cz + dz;
+    if (nx < 0 || nz < 0 || nx >= CX || nz >= CZ) continue;
+    // 隣チャンクは境界に触れたときだけ再構築
+    if (dx !== 0 && ((x % CH !== 0 && x % CH !== CH-1))) continue;
+    if (dz !== 0 && ((z % CH !== 0 && z % CH !== CH-1))) continue;
+    const key = nx + ',' + nz;
+    if (dirtySet[key]) continue;
+    dirtySet[key] = 1;
+    if (urgent) dirtyQ.unshift({ x:nx, z:nz, due:0 });
+    else dirtyQ.push({ x:nx, z:nz, due:due });
+  }
+}
+function flushDirty(){
+  const t0 = performance.now();
+  let n = 0;
+  while (dirtyQ.length && n < 3){
+    if (dirtyQ[0].due > t0) break;               // まだ変更が続きそうなので待つ
+    const c = dirtyQ.shift();
+    delete dirtySet[c.x + ',' + c.z];
+    buildChunk(c.x, c.z);
+    n++;
+    if (performance.now() - t0 > 4.5) break;     // 1フレームで使う時間を制限
+  }
+}
+
+/* =========================================================
+   8. サウンド（Web Audio API による合成音）
+   ========================================================= */
+const Snd = {
+  ctx:null, master:null, sfx:null, music:null, noise:null,
+  sfxOn:true, musicOn:true, ready:false,
+  init: function(){
+    if (this.ready) return;
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC) return;
+    this.ctx = new AC();
+    this.master = this.ctx.createGain(); this.master.gain.value = 0.85;
+    this.master.connect(this.ctx.destination);
+    this.sfx = this.ctx.createGain(); this.sfx.gain.value = 0.9; this.sfx.connect(this.master);
+    this.music = this.ctx.createGain(); this.music.gain.value = 0.16; this.music.connect(this.master);
+    const len = Math.floor(this.ctx.sampleRate * 0.7);
+    const buf = this.ctx.createBuffer(1, len, this.ctx.sampleRate);
+    const d = buf.getChannelData(0);
+    for (let i = 0; i < len; i++) d[i] = Math.random()*2 - 1;
+    this.noise = buf;
+    this.ready = true;
+    this.startMusic();
+  },
+  resume: function(){ if (this.ctx && this.ctx.state === 'suspended') this.ctx.resume(); },
+  burst: function(dur, freq, q, gain, type){
+    if (!this.ready || !this.sfxOn) return;
+    const t = this.ctx.currentTime;
+    const src = this.ctx.createBufferSource(); src.buffer = this.noise; src.loop = true;
+    const f = this.ctx.createBiquadFilter(); f.type = type || 'bandpass';
+    f.frequency.setValueAtTime(freq, t);
+    f.frequency.exponentialRampToValueAtTime(Math.max(80, freq*0.45), t + dur);
+    f.Q.value = q;
+    const g = this.ctx.createGain();
+    g.gain.setValueAtTime(gain, t);
+    g.gain.exponentialRampToValueAtTime(0.0008, t + dur);
+    src.connect(f); f.connect(g); g.connect(this.sfx);
+    src.start(t); src.stop(t + dur + 0.02);
+  },
+  tone: function(f0, f1, dur, type, gain, delay){
+    if (!this.ready || !this.sfxOn) return;
+    const t = this.ctx.currentTime + (delay || 0);
+    const o = this.ctx.createOscillator(); o.type = type || 'triangle';
+    o.frequency.setValueAtTime(f0, t);
+    o.frequency.exponentialRampToValueAtTime(Math.max(20, f1), t + dur);
+    const g = this.ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(gain, t + 0.01);
+    g.gain.exponentialRampToValueAtTime(0.0005, t + dur);
+    o.connect(g); g.connect(this.sfx);
+    o.start(t); o.stop(t + dur + 0.03);
+  },
+  dig: function(b){
+    if (b === STONE || b === BRICK || b === GOLD){ this.burst(0.18, 1700, 1.4, 0.35); this.tone(220,110,0.10,'square',0.06); }
+    else if (b === GLASS){ this.burst(0.22, 3400, 2.2, 0.30); this.tone(1600,700,0.14,'triangle',0.08); }
+    else if (b === LOG || b === PLANK){ this.burst(0.16, 820, 1.2, 0.34); this.tone(180,90,0.10,'square',0.07); }
+    else if (b === SAND){ this.burst(0.20, 1050, 0.7, 0.30, 'highpass'); }
+    else if (b === LEAVES){ this.burst(0.16, 2400, 0.8, 0.22, 'highpass'); }
+    else { this.burst(0.17, 520, 0.9, 0.34); this.tone(150,80,0.10,'sine',0.08); }
+  },
+  place: function(){ this.burst(0.10, 700, 1.0, 0.26); this.tone(300, 150, 0.09, 'square', 0.08); },
+  step: function(){ this.burst(0.055, 380 + Math.random()*320, 0.8, 0.13, 'lowpass'); },
+  jump: function(){ this.tone(330, 620, 0.11, 'triangle', 0.13); },
+  land: function(){ this.tone(150, 70, 0.14, 'sine', 0.16); this.burst(0.09, 300, 0.7, 0.16, 'lowpass'); },
+  splash: function(){ this.burst(0.35, 900, 0.5, 0.28, 'lowpass'); },
+  select: function(){ this.tone(880, 1180, 0.05, 'square', 0.07); },
+  hi: function(){ this.tone(660, 990, 0.08, 'square', 0.09); this.tone(990, 1320, 0.09, 'square', 0.08, 0.09); },
+  distGain: function(d){ return Math.max(0, 1 - d/26); },
+  // ブタの鳴き声（近いほど大きい）
+  oink: function(d, excited){
+    if (!this.ready || !this.sfxOn) return;
+    const vol = this.distGain(d) * (excited ? 0.5 : 0.34);
+    if (vol < 0.01) return;
+    const n = excited ? 3 : 2;
+    const t0 = this.ctx.currentTime;
+    for (let i = 0; i < n; i++){
+      const t = t0 + i * (excited ? 0.11 : 0.17);
+      const f = (excited ? 430 : 300) + Math.random()*90;
+      const o = this.ctx.createOscillator(); o.type = 'sawtooth';
+      o.frequency.setValueAtTime(f, t);
+      o.frequency.exponentialRampToValueAtTime(f*0.52, t + 0.12);
+      const bp = this.ctx.createBiquadFilter();
+      bp.type = 'bandpass'; bp.frequency.value = 950; bp.Q.value = 3.2;
+      const g = this.ctx.createGain();
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(vol, t + 0.02);
+      g.gain.exponentialRampToValueAtTime(0.0004, t + 0.14);
+      o.connect(bp); bp.connect(g); g.connect(this.sfx);
+      o.start(t); o.stop(t + 0.2);
+    }
+  },
+  // 住人がブロックを掘る／置く音
+  work: function(d, place){
+    const v = this.distGain(d) * 0.55;
+    if (v < 0.02) return;
+    if (place){ this.tone(300, 150, 0.09, 'square', v*0.14); this.burst(0.09, 720, 1.0, v*0.22); }
+    else { this.burst(0.15, 950, 1.1, v*0.34); this.tone(175, 90, 0.09, 'square', v*0.10); }
+  },
+  // カエルの鳴き声（ビブラートでゲコゲコ）
+  croak: function(d){
+    if (!this.ready || !this.sfxOn) return;
+    const v = this.distGain(d) * 0.4;
+    if (v < 0.02) return;
+    const t0 = this.ctx.currentTime;
+    const n = 1 + (Math.random() < 0.5 ? 1 : 0);
+    for (let i = 0; i < n; i++){
+      const t = t0 + i*0.15;
+      const o = this.ctx.createOscillator(); o.type = 'square';
+      o.frequency.setValueAtTime(140 + Math.random()*50, t);
+      const lfo = this.ctx.createOscillator(); lfo.type = 'square';
+      lfo.frequency.value = 30 + Math.random()*12;
+      const lg = this.ctx.createGain(); lg.gain.value = 42;
+      lfo.connect(lg); lg.connect(o.frequency);
+      const bp = this.ctx.createBiquadFilter();
+      bp.type = 'bandpass'; bp.frequency.value = 640; bp.Q.value = 4;
+      const g = this.ctx.createGain();
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(v, t + 0.02);
+      g.gain.exponentialRampToValueAtTime(0.0004, t + 0.12);
+      o.connect(bp); bp.connect(g); g.connect(this.sfx);
+      o.start(t); o.stop(t + 0.17);
+      lfo.start(t); lfo.stop(t + 0.17);
+    }
+  },
+  // 仲間のマイッキーのあいさつ
+  npcHi: function(d){
+    const v = this.distGain(d) * 0.5;
+    if (v < 0.01) return;
+    this.tone(587, 784, 0.07, 'square', v*0.16);
+    this.tone(880, 1046, 0.09, 'square', v*0.14, 0.08);
+  },
+  // ゆるいペンタトニックのBGM
+  step_i: 0, next: 0,
+  startMusic: function(){
+    const self = this;
+    const scale = [0, 3, 5, 7, 10, 12, 15, 12, 10, 7];
+    setInterval(function(){
+      if (!self.ready || !self.musicOn) return;
+      if (self.ctx.state === 'suspended') return;
+      const now = self.ctx.currentTime;
+      if (self.next < now) self.next = now + 0.05;
+      while (self.next < now + 0.4){
+        const i = self.step_i++;
+        const semi = scale[i % scale.length] + (((i / 10) | 0) % 2 ? 0 : -12);
+        self.note(174.6 * Math.pow(2, semi/12), self.next, 0.5, 0.09, 'triangle');
+        if (i % 4 === 0) self.note(87.3 * Math.pow(2, (scale[(i*3) % scale.length])/12), self.next, 0.85, 0.10, 'sine');
+        self.next += 0.30;
+      }
+    }, 120);
+  },
+  note: function(freq, when, dur, gain, type){
+    const o = this.ctx.createOscillator(); o.type = type;
+    o.frequency.setValueAtTime(freq, when);
+    const g = this.ctx.createGain();
+    g.gain.setValueAtTime(0.0001, when);
+    g.gain.exponentialRampToValueAtTime(gain, when + 0.05);
+    g.gain.exponentialRampToValueAtTime(0.0002, when + dur);
+    o.connect(g); g.connect(this.music);
+    o.start(when); o.stop(when + dur + 0.05);
+  }
+};
+
+/* =========================================================
+   9. マイッキー（キャラクターモデル）
+   ========================================================= */
+function faceTexture(){
+  const cv = document.createElement('canvas'); cv.width = cv.height = 32;
+  const g = cv.getContext('2d');
+  g.fillStyle = '#f6c9a0'; g.fillRect(0, 0, 32, 32);
+  g.fillStyle = '#2b1c14'; g.fillRect(0, 0, 32, 8);                 // 前髪
+  for (let i = 0; i < 8; i++) g.fillRect(i*4, 8, 3, 2 + (i%2)*3);
+  g.fillStyle = '#ffffff'; g.fillRect(6, 13, 7, 6); g.fillRect(19, 13, 7, 6);
+  g.fillStyle = '#20202a'; g.fillRect(9, 15, 4, 4); g.fillRect(20, 15, 4, 4);
+  g.fillStyle = '#ffffff'; g.fillRect(10, 16, 1, 1); g.fillRect(21, 16, 1, 1);
+  g.fillStyle = '#ef8f8f'; g.fillRect(3, 21, 5, 3); g.fillRect(24, 21, 5, 3);
+  g.fillStyle = '#7a2b22'; g.fillRect(11, 23, 10, 5);               // 口
+  g.fillStyle = '#ffffff'; g.fillRect(12, 23, 8, 2);
+  const t = new THREE.CanvasTexture(cv);
+  t.magFilter = THREE.NearestFilter; t.minFilter = THREE.NearestFilter; t.generateMipmaps = false;
+  return t;
+}
+// マテリアルとジオメトリは使い回して描画負荷を抑える
+const matCache = {};
+function mat(c){
+  if (!matCache[c]) matCache[c] = new THREE.MeshLambertMaterial({ color: c });
+  return matCache[c];
+}
+const DEFAULT_FACE = faceTexture();
+const FACE_MAT = new THREE.MeshLambertMaterial({ map: DEFAULT_FACE });
+let faceShot = null;                 // 撮影した顔（データURL）
+
+const FACE_TEX_SIZE = 256;               // 顔テクスチャの解像度（写真のまま貼る）
+
+// 撮った顔をマイッキー全員に反映する（材質を共有しているので一括で変わる）
+function applyFace(dataURL){
+  try {
+    const im = new Image();
+    im.onload = function(){
+      const cv = document.createElement('canvas');
+      cv.width = cv.height = FACE_TEX_SIZE;
+      const c = cv.getContext('2d');
+      c.imageSmoothingEnabled = true;
+      if ('imageSmoothingQuality' in c) c.imageSmoothingQuality = 'high';
+      c.drawImage(im, 0, 0, FACE_TEX_SIZE, FACE_TEX_SIZE);
+      const tex = new THREE.CanvasTexture(cv);   // 既定の線形補間とミップマップのまま使う
+      try { tex.anisotropy = renderer.capabilities.getMaxAnisotropy(); } catch(e){}
+      if (FACE_MAT.map && FACE_MAT.map !== DEFAULT_FACE) FACE_MAT.map.dispose();
+      FACE_MAT.map = tex;
+      FACE_MAT.needsUpdate = true;
+    };
+    im.src = dataURL;
+  } catch(e){}
+}
+function restoreFace(){
+  if (FACE_MAT.map && FACE_MAT.map !== DEFAULT_FACE) FACE_MAT.map.dispose();
+  FACE_MAT.map = DEFAULT_FACE;
+  FACE_MAT.needsUpdate = true;
+}
+const SKIN = 0xf6c9a0, HAIR = 0x2b1c14, PANTS = 0x35508f, SHOE = 0x2a2a33;
+const SHIRTS = [0xe2402f, 0x3f9d5a, 0xf0b429, 0x4f6ddb, 0xa05fc0, 0xe07ea8, 0x2fb5b0];
+
+const geoCache = {};
+function boxGeo(w, h, d){
+  const k = w + '/' + h + '/' + d;
+  if (!geoCache[k]) geoCache[k] = new THREE.BoxGeometry(w, h, d);
+  return geoCache[k];
+}
+function box(w, h, d, color, x, y, z){
+  const m = new THREE.Mesh(boxGeo(w, h, d),
+                           typeof color === 'number' ? mat(color) : color);
+  m.position.set(x || 0, y || 0, z || 0);
+  return m;
+}
+
+// 動かないパーツはひとつのジオメトリにまとめて、描画回数を減らす
+const matVC = new THREE.MeshLambertMaterial({ vertexColors: true });
+const partCache = {};
+function mergedBoxes(list){
+  const P = [], N = [], C = [], I = [];
+  for (let k = 0; k < list.length; k++){
+    const b = list[k];
+    const r = ((b.c >> 16) & 255)/255, g = ((b.c >> 8) & 255)/255, bl = (b.c & 255)/255;
+    for (let f = 0; f < 6; f++){
+      const face = FACES[f], s = P.length/3;
+      for (let i = 0; i < 4; i++){
+        const v = face.v[i];
+        P.push((b.x||0) + (v[0]-0.5)*b.w, (b.y||0) + (v[1]-0.5)*b.h, (b.z||0) + (v[2]-0.5)*b.d);
+        N.push(face.n[0], face.n[1], face.n[2]);
+        C.push(r, g, bl);
+      }
+      I.push(s, s+1, s+2, s, s+2, s+3);
+    }
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(P, 3));
+  geo.setAttribute('normal',   new THREE.Float32BufferAttribute(N, 3));
+  geo.setAttribute('color',    new THREE.Float32BufferAttribute(C, 3));
+  geo.setIndex(I);
+  geo.computeBoundingSphere();
+  return geo;
+}
+function part(key, boxes){
+  if (!partCache[key]) partCache[key] = mergedBoxes(boxes);
+  return new THREE.Mesh(partCache[key], matVC);
+}
+
+function makeMaikkii(shirt){
+  if (shirt === undefined) shirt = SHIRTS[0];
+  const g = new THREE.Group();
+
+  const headMats = [mat(SKIN), mat(SKIN), mat(HAIR), mat(SKIN), FACE_MAT, mat(HAIR)];
+  const head = new THREE.Group();
+  head.add(new THREE.Mesh(boxGeo(0.5, 0.5, 0.5), headMats));    // 顔だけテクスチャ
+  head.add(box(0.54, 0.16, 0.54, HAIR, 0, 0.23, 0));
+  head.position.y = 1.55; g.add(head);
+
+  g.add(part('torso:' + shirt, [                                // 胴とベルト
+    { y:0.97, w:0.5,  h:0.66, d:0.27, c:shirt },
+    { y:0.68, w:0.52, h:0.08, d:0.29, c:0xf0c020 }
+  ]));
+
+  function limb(key, w, h, d, col, capCol, capH){
+    return part(key, [
+      { y:-h/2,          w:w,      h:h,    d:d,      c:col },
+      { y:-h + capH/2,   w:w*1.02, h:capH, d:d*1.02, c:capCol }
+    ]);
+  }
+  const armL = limb('arm:'+shirt, 0.19, 0.62, 0.19, shirt, SKIN, 0.16); armL.position.set( 0.345, 1.28, 0); g.add(armL);
+  const armR = limb('arm:'+shirt, 0.19, 0.62, 0.19, shirt, SKIN, 0.16); armR.position.set(-0.345, 1.28, 0); g.add(armR);
+  const legL = limb('leg', 0.21, 0.66, 0.21, PANTS, SHOE, 0.12); legL.position.set( 0.13, 0.64, 0); g.add(legL);
+  const legR = limb('leg', 0.21, 0.66, 0.21, PANTS, SHOE, 0.12); legR.position.set(-0.13, 0.64, 0); g.add(legR);
+
+  g.userData = { armL:armL, armR:armR, legL:legL, legR:legR, head:head, phase: Math.random()*6 };
+  return g;
+}
+
+function makePig(){
+  const PINK = 0xefa6ad, PINK2 = 0xe0838d, SNOUT = 0xcf6b76, HOOF = 0x6a4a4a, EYE = 0x20202a;
+  const g = new THREE.Group();
+
+  const body = part('pigBody', [
+    { w:0.56, h:0.5,  d:0.86, c:PINK },
+    { y:0.19, z:-0.12, w:0.58, h:0.14, d:0.34, c:PINK2 }      // 背中の模様
+  ]);
+  body.position.y = 0.68; g.add(body);
+
+  const head = part('pigHead', [
+    { w:0.46, h:0.44, d:0.4, c:PINK },
+    { y:-0.07, z:0.23, w:0.24, h:0.17, d:0.08, c:SNOUT },     // 鼻
+    { x: 0.14, y:0.09, z:0.21, w:0.05, h:0.05, d:0.02, c:EYE },
+    { x:-0.14, y:0.09, z:0.21, w:0.05, h:0.05, d:0.02, c:EYE },
+    { x: 0.14, y:0.25, z:-0.02, w:0.12, h:0.11, d:0.05, c:PINK2 },  // 耳
+    { x:-0.14, y:0.25, z:-0.02, w:0.12, h:0.11, d:0.05, c:PINK2 }
+  ]);
+  head.position.set(0, 0.76, 0.58); g.add(head);
+
+  function leg(x, z){
+    const m = part('pigLeg', [
+      { y:-0.17, w:0.18, h:0.34, d:0.18, c:PINK },
+      { y:-0.38, w:0.19, h:0.08, d:0.19, c:HOOF }
+    ]);
+    m.position.set(x, 0.42, z);
+    return m;
+  }
+  const legFL = leg( 0.18, 0.29), legFR = leg(-0.18, 0.29);
+  const legBL = leg( 0.18, -0.29), legBR = leg(-0.18, -0.29);
+  g.add(legFL, legFR, legBL, legBR);
+
+  const tail = part('pigTail', [{ y:0.07, w:0.07, h:0.17, d:0.07, c:PINK2 }]);
+  tail.position.set(0, 0.84, -0.45); g.add(tail);
+
+  g.userData = { head:head, body:body, tail:tail, phase: Math.random()*6,
+                 legFL:legFL, legFR:legFR, legBL:legBL, legBR:legBR };
+  return g;
+}
+
+function makeFrog(){
+  const GRN = 0x6fbf4f, GRN2 = 0x4d9436, BELLY = 0xdce9a6,
+        EYEW = 0xfdfdfd, EYEB = 0x1b1b22, MOUTH = 0x3a2828, CHEEK = 0xe1909c;
+  const g = new THREE.Group();
+  g.rotation.order = 'YXZ';                    // 向きを変えてから前後に傾ける
+
+  const body = part('frogBody', [
+    { w:0.42, h:0.24, d:0.46, c:GRN },
+    { y:-0.09, w:0.36, h:0.09, d:0.40, c:BELLY },                   // おなか
+    { x: 0.10, y:0.12, z:-0.08, w:0.10, h:0.03, d:0.10, c:GRN2 },   // 背中の模様
+    { x:-0.12, y:0.12, z: 0.06, w:0.09, h:0.03, d:0.09, c:GRN2 }
+  ]);
+  body.position.y = 0.20; g.add(body);
+
+  const head = part('frogHead', [
+    { w:0.36, h:0.20, d:0.24, c:GRN },
+    { y:-0.07, z:0.115, w:0.28, h:0.03, d:0.02, c:MOUTH },          // 口
+    { x: 0.11, y:0.12, z:0, w:0.15, h:0.15, d:0.15, c:GRN },        // 目のふくらみ
+    { x:-0.11, y:0.12, z:0, w:0.15, h:0.15, d:0.15, c:GRN },
+    { x: 0.11, y:0.185, z:0.01, w:0.11, h:0.04, d:0.11, c:EYEW },
+    { x:-0.11, y:0.185, z:0.01, w:0.11, h:0.04, d:0.11, c:EYEW },
+    { x: 0.11, y:0.207, z:0.02, w:0.06, h:0.02, d:0.06, c:EYEB },   // ひとみ
+    { x:-0.11, y:0.207, z:0.02, w:0.06, h:0.02, d:0.06, c:EYEB },
+    { x: 0.175, y:-0.03, z:0.04, w:0.04, h:0.05, d:0.07, c:CHEEK }, // ほお
+    { x:-0.175, y:-0.03, z:0.04, w:0.04, h:0.05, d:0.07, c:CHEEK }
+  ]);
+  head.position.set(0, 0.30, 0.26); g.add(head);
+
+  function legF(x){
+    const m = part('frogLegF', [
+      { y:-0.06, w:0.07, h:0.14, d:0.07, c:GRN },
+      { y:-0.14, z:0.02, w:0.10, h:0.04, d:0.12, c:GRN2 }
+    ]);
+    m.position.set(x, 0.16, 0.16); return m;
+  }
+  function legB(x){
+    const m = part('frogLegB', [
+      { y:-0.04, z:-0.02, w:0.12, h:0.17, d:0.18, c:GRN },
+      { y:-0.14, z: 0.03, w:0.11, h:0.04, d:0.17, c:GRN2 }
+    ]);
+    m.position.set(x, 0.18, -0.14); return m;
+  }
+  const legFL = legF(0.15), legFR = legF(-0.15);
+  const legBL = legB(0.18), legBR = legB(-0.18);
+  g.add(legFL, legFR, legBL, legBR);
+
+  g.userData = { head:head, body:body, phase: Math.random()*6, air: 0, sw: 0,
+                 legFL:legFL, legFR:legFR, legBL:legBL, legBR:legBR };
+  return g;
+}
+
+// 跳ぶときは後ろ足を伸ばし、泳ぐときは平泳ぎで足をかく
+function animateFrog(model, speed, dt, airborne, swim, pitch){
+  const ud = model.userData;
+  ud.phase += dt * (swim ? 3.4 + speed*1.4 : 2 + speed);
+  ud.air += ((airborne ? 1 : 0) - ud.air) * Math.min(1, dt*11);
+  ud.sw  += ((swim ? 1 : 0) - ud.sw) * Math.min(1, dt*5);
+  const a = ud.air, w = ud.sw;
+  const kick = Math.sin(ud.phase * 2.3);
+  const hopB = -0.15 - a*1.05, swimB = -0.55 + kick*0.65;
+  const hopF =  0.10 + a*0.6,  swimF =  0.32 - kick*0.30;
+  ud.legBL.rotation.x = hopB*(1-w) + swimB*w;
+  ud.legBR.rotation.x = hopB*(1-w) + swimB*w;
+  ud.legFL.rotation.x = hopF*(1-w) + swimF*w;
+  ud.legFR.rotation.x = hopF*(1-w) + swimF*w;
+  ud.legBL.rotation.y =  kick*0.30*w;                              // 足を横に広げてかく
+  ud.legBR.rotation.y = -kick*0.30*w;
+  ud.body.rotation.x = -a*0.28*(1-w);
+  ud.head.rotation.x = (-a*0.18)*(1-w) + Math.sin(ud.phase)*0.04;   // のどの動き
+  const puff = 1 + Math.sin(ud.phase*1.7)*0.04;
+  ud.head.scale.set(puff, 1, puff);
+  model.rotation.x = pitch * w;                                    // もぐるときは体ごと傾ける
+  ud.legBL.updateMatrix(); ud.legBR.updateMatrix();
+  ud.legFL.updateMatrix(); ud.legFR.updateMatrix();
+  ud.body.updateMatrix(); ud.head.updateMatrix();
+  model.updateMatrix();
+}
+
+// 動かないパーツの行列計算を毎フレーム走らせない
+function freezeMatrices(o){
+  o.updateMatrix();
+  o.matrixAutoUpdate = false;
+  for (let i = 0; i < o.children.length; i++) freezeMatrices(o.children[i]);
+}
+
+// 二足歩行のアニメーション
+function animateHumanoid(model, speed, dt, opt){
+  const ud = model.userData;
+  opt = opt || {};
+  ud.phase += dt * (5 + speed * 2.4);
+  const amp = Math.min(speed / 3.4, 1.25);
+  const s = Math.sin(ud.phase);
+  ud.legL.rotation.x =  s * 0.75 * amp;
+  ud.legR.rotation.x = -s * 0.75 * amp;
+  ud.armL.rotation.x = -s * 0.6 * amp - (opt.swing || 0) * 1.6;
+  ud.armR.rotation.x =  s * 0.6 * amp;
+  if (opt.airborne){ ud.armL.rotation.x = -2.1; ud.armR.rotation.x = -2.1; }
+  ud.head.rotation.x = -(opt.pitch || 0) * 0.7;
+  ud.head.rotation.y = opt.headYaw || 0;
+  ud.legL.updateMatrix(); ud.legR.updateMatrix();
+  ud.armL.updateMatrix(); ud.armR.updateMatrix(); ud.head.updateMatrix();
+}
+
+// 四足歩行のアニメーション
+function animateQuadruped(model, speed, dt){
+  const ud = model.userData;
+  ud.phase += dt * (6 + speed * 3.4);
+  const amp = Math.min(speed / 2.2, 1.2);
+  const s = Math.sin(ud.phase);
+  ud.legFL.rotation.x =  s * 0.7 * amp;
+  ud.legBR.rotation.x =  s * 0.7 * amp;
+  ud.legFR.rotation.x = -s * 0.7 * amp;
+  ud.legBL.rotation.x = -s * 0.7 * amp;
+  ud.head.rotation.x = Math.sin(ud.phase * 0.45) * 0.09;
+  ud.tail.rotation.z = s * 0.55;
+  ud.body.rotation.z = s * 0.03 * amp;
+  ud.legFL.updateMatrix(); ud.legFR.updateMatrix();
+  ud.legBL.updateMatrix(); ud.legBR.updateMatrix();
+  ud.head.updateMatrix(); ud.tail.updateMatrix(); ud.body.updateMatrix();
+}
+const maikkii = makeMaikkii(SHIRTS[0]);
+maikkii.visible = false;
+freezeMatrices(maikkii);
+scene.add(maikkii);
+
+// 一人称のときに持っているブロック
+function heldGeometry(type){
+  const buf = newBuf();
+  const tiles = TILES[type];
+  for (let f = 0; f < 6; f++){
+    const face = FACES[f];
+    const tile = face.axis === 1 ? (face.n[1] === 1 ? tiles[0] : tiles[1]) : tiles[2];
+    pushQuad(buf, [-0.5, -0.5, -0.5], face, tile, [3,3,3,3], false);
+  }
+  return toGeometry(buf);
+}
+const held = new THREE.Mesh(heldGeometry(GRASS), matSolid);
+held.scale.setScalar(0.26);
+held.position.set(0.42, -0.34, -0.62);
+held.rotation.set(0.2, -0.6, 0.15);
+camera.add(held);
+const handArm = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.1, 0.3), mat(0xf6c9a0));
+handArm.position.set(0.42, -0.44, -0.5);
+camera.add(handArm);
+
+/* =========================================================
+   10. プレイヤー
+   ========================================================= */
+const PW = 0.3, PH = 1.78, EYE = 1.62;
+const player = {
+  x: WX/2, y: 30, z: WZ/2,
+  vx: 0, vy: 0, vz: 0,
+  yaw: 0, pitch: 0,
+  onGround: false, inWater: false, thirdPerson: false, trainNext: null, frogNext: null,
+  stepTimer: 0, swing: 0, broke: 0
+};
+
+function spawn(){
+  for (let r = 0; r < 40; r++){
+    const x = Math.floor(WX/2 + (Math.random()-0.5)*r*2);
+    const z = Math.floor(WZ/2 + (Math.random()-0.5)*r*2);
+    if (x < 2 || z < 2 || x > WX-3 || z > WZ-3) continue;
+    const h = heightAt(x, z);
+    if (h > SEA + 2 && getBlock(x, h, z) === GRASS){
+      player.x = x + 0.5; player.z = z + 0.5; player.y = h + 1.01;
+      return;
+    }
+  }
+  player.y = 32;
+}
+
+const keys = {};
+function solidAt(x, y, z){ return isSolid(getBlock(Math.floor(x), Math.floor(y), Math.floor(z))); }
+
+// プレイヤーにもモブにも使う共通の当たり判定
+function collideAxis(e, axis, hw, ht){
+  const minX = Math.floor(e.x - hw), maxX = Math.floor(e.x + hw);
+  const minY = Math.floor(e.y),      maxY = Math.floor(e.y + ht);
+  const minZ = Math.floor(e.z - hw), maxZ = Math.floor(e.z + hw);
+  for (let x = minX; x <= maxX; x++)
+    for (let y = minY; y <= maxY; y++)
+      for (let z = minZ; z <= maxZ; z++){
+        if (!isSolid(getBlock(x, y, z))) continue;
+        if (e.x + hw <= x || e.x - hw >= x+1) continue;
+        if (e.y + ht <= y || e.y      >= y+1) continue;
+        if (e.z + hw <= z || e.z - hw >= z+1) continue;
+        if (axis === 0){
+          if (e.vx > 0) e.x = x - hw - 0.0005;
+          else if (e.vx < 0) e.x = x + 1 + hw + 0.0005;
+          e.vx = 0; e.bumped = true;
+        } else if (axis === 1){
+          if (e.vy > 0){ e.y = y - ht - 0.0005; e.vy = 0; }
+          else if (e.vy < 0){
+            e.y = y + 1 + 0.0005;
+            e.impact = -e.vy; e.vy = 0; e.onGround = true;
+          }
+        } else {
+          if (e.vz > 0) e.z = z - hw - 0.0005;
+          else if (e.vz < 0) e.z = z + 1 + hw + 0.0005;
+          e.vz = 0; e.bumped = true;
+        }
+      }
+}
+
+function updatePlayer(dt){
+  const fx = -Math.sin(player.yaw), fz = -Math.cos(player.yaw);
+  const rx =  Math.cos(player.yaw), rz = -Math.sin(player.yaw);
+  let mx = 0, mz = 0;
+  if (keys['KeyW']) { mx += fx; mz += fz; }
+  if (keys['KeyS']) { mx -= fx; mz -= fz; }
+  if (keys['KeyD']) { mx += rx; mz += rz; }
+  if (keys['KeyA']) { mx -= rx; mz -= rz; }
+  if (touch.active){ mx += fx*touch.y + rx*touch.x; mz += fz*touch.y + rz*touch.x; }
+  const len = Math.hypot(mx, mz);
+  if (len > 0.001){ mx /= len; mz /= len; }
+
+  const sprint = (keys['ShiftLeft'] || keys['ShiftRight']) ? 1.5 : 1;
+  const speed = (player.inWater ? 3.0 : 4.4) * sprint;
+  const accel = player.onGround ? 16 : 6;
+  player.vx += (mx*speed - player.vx) * Math.min(1, accel*dt);
+  player.vz += (mz*speed - player.vz) * Math.min(1, accel*dt);
+
+  const headBlock = getBlock(Math.floor(player.x), Math.floor(player.y + 1.4), Math.floor(player.z));
+  const feetBlock = getBlock(Math.floor(player.x), Math.floor(player.y + 0.2), Math.floor(player.z));
+  const wasWater = player.inWater;
+  player.inWater = (feetBlock === WATER || headBlock === WATER);
+  if (player.inWater && !wasWater) Snd.splash();
+
+  const jump = keys['Space'] || touch.jump;
+  if (player.inWater){
+    player.vy += (-9 - player.vy) * Math.min(1, 4*dt);
+    if (jump) player.vy = 3.4;
+  } else {
+    player.vy -= 26 * dt;
+    if (player.vy < -48) player.vy = -48;
+    if (jump && player.onGround){ player.vy = 8.6; player.onGround = false; Snd.jump(); }
+  }
+
+  player.onGround = false; player.impact = 0;
+  player.x += player.vx * dt; collideAxis(player, 0, PW, PH);
+  player.z += player.vz * dt; collideAxis(player, 2, PW, PH);
+  player.y += player.vy * dt; collideAxis(player, 1, PW, PH);
+  if (player.impact > 8) Snd.land();
+
+  // 世界の外に出ない
+  player.x = Math.max(1.4, Math.min(WX - 1.4, player.x));
+  player.z = Math.max(1.4, Math.min(WZ - 1.4, player.z));
+  if (player.y < -6) spawn();
+
+  // 足音
+  const hv = Math.hypot(player.vx, player.vz);
+  if (player.onGround && hv > 1.2){
+    player.stepTimer -= dt * hv;
+    if (player.stepTimer <= 0){ Snd.step(); player.stepTimer = 2.6; }
+  } else player.stepTimer = 0;
+
+  // キャラクターの姿勢
+  maikkii.position.set(player.x, player.y, player.z);
+  maikkii.rotation.y = player.yaw + Math.PI;
+  maikkii.updateMatrix();
+  animateHumanoid(maikkii, hv, dt, {
+    swing: player.swing, pitch: player.pitch,
+    airborne: !player.onGround && !player.inWater
+  });
+}
+
+/* =========================================================
+   10-B. 歩き回る住人（マイッキーの仲間とブタ）
+   ========================================================= */
+const MOBS = [];
+const NAMES_MOB = { pig: 'ブタ', maikkii: 'マイッキー', frog: 'カエル' };
+const LOD_ANIM = 42;      // これより遠い住人は手足を止める
+const LOD_HIDE = 124;     // 霧の外は描画しない
+
+function makeMob(kind, x, y, z, opt){
+  opt = opt || {};
+  const isPig = (kind === 'pig'), isFrog = (kind === 'frog');
+  const shirt = (opt.shirt === undefined || isNaN(opt.shirt))
+              ? 1 + Math.floor(Math.random()*(SHIRTS.length-1)) : (opt.shirt|0);
+  const s = opt.scale || (isFrog ? 0.85 + Math.random()*0.35
+                        : isPig ? 0.88 + Math.random()*0.3 : 0.9 + Math.random()*0.2);
+  const model = isFrog ? makeFrog()
+              : isPig ? makePig() : makeMaikkii(SHIRTS[Math.abs(shirt) % SHIRTS.length]);
+  model.scale.setScalar(s);
+  freezeMatrices(model);
+  scene.add(model);
+  const m = {
+    kind: kind, model: model, x: x, y: y, z: z, shirt: shirt, scale: s,
+    vx: 0, vy: 0, vz: 0, yaw: opt.yaw === undefined ? Math.random()*Math.PI*2 : opt.yaw,
+    onGround: false, bumped: false, impact: 0, stuck: 0,
+    alive: true, trainNext: null, frogNext: null,
+    linkKey: isFrog ? 'frogNext' : 'trainNext',
+    look: 0, task: null, cool: Math.random()*2, goalTime: 0, lastDist: 1e9, swing: 0,
+    side: 0, sideDir: 1, dirYaw: 0, chase: 1, follow: null, followTimer: 0,
+    hop: 0, wet: 0, dest: null, destTimer: 0, swimY: 0, diveY: 0,
+    think: Math.random()*3, moving: true, startle: 0,
+    voice: 3 + Math.random()*12,
+    hw: isFrog ? 0.26*s : isPig ? 0.4*s : 0.3*s,
+    ht: isFrog ? 0.55*s : isPig ? 0.98*s : 1.78*s,
+    speed: isFrog ? 2.2 + Math.random()*0.5
+         : isPig ? 1.4 + Math.random()*0.5 : 2.1 + Math.random()*0.6
+  };
+  MOBS.push(m);
+  return m;
+}
+
+function mobSurface(x, z){
+  for (let y = WY - 2; y > 1; y--){
+    if (isSolid(getBlock(x, y, z)) && getBlock(x, y+1, z) === AIR && getBlock(x, y+2, z) === AIR)
+      return y + 1;
+  }
+  return -1;
+}
+
+function spawnMobs(count, cx, cz, radius){
+  let placed = 0, tries = 0;
+  while (placed < count && tries < 4000){
+    tries++;
+    let x, z;
+    if (radius){
+      const a = Math.random()*Math.PI*2, r = 6 + Math.random()*radius;
+      x = Math.floor(cx + Math.cos(a)*r); z = Math.floor(cz + Math.sin(a)*r);
+    } else {
+      x = 4 + Math.floor(Math.random()*(WX-8)); z = 4 + Math.floor(Math.random()*(WZ-8));
+    }
+    if (x < 4 || z < 4 || x > WX-5 || z > WZ-5) continue;
+    if (heightAt(x, z) <= SEA + 1) continue;
+    const y = mobSurface(x, z);
+    if (y < SEA + 2) continue;
+    const under = getBlock(x, y - 1, z);
+    if (under !== GRASS && under !== SAND) continue;   // 木の上には湧かない
+    makeMob(placed % 3 === 2 ? 'maikkii' : 'pig', x + 0.5, y + 0.02, z + 0.5);
+    placed++;
+  }
+  return placed;
+}
+
+// 進行方向の yaw（前方ベクトルは (-sin yaw, -cos yaw)）
+function yawTo(fromX, fromZ, toX, toZ){
+  return Math.atan2(-(toX - fromX), -(toZ - fromZ));
+}
+
+function updateMob(m, dt){
+  const dxp = player.x - m.x, dzp = player.z - m.z;
+  const dist = Math.hypot(dxp, dzp);
+
+  if (m.startle > 0) m.startle -= dt;
+  if (m.swing > 0) m.swing = Math.max(0, m.swing - dt*3);
+  m.chase = 1;
+
+  let goal = false;
+  if (m.look > 0){                                   // 叩かれた直後はこちらを向いて立ち止まる
+    m.look -= dt;
+    m.yaw = yawTo(m.x, m.z, player.x, player.z);
+    m.moving = false;
+    goal = true;
+  } else if (m.kind === 'pig'){
+    goal = pigGoal(m, dt, dist);
+  } else if (m.kind === 'frog'){
+    goal = frogGoal(m, dt, dist);
+  } else {
+    goal = workerGoal(m, dt, dist);
+  }
+
+  m.think -= dt;
+  if (!goal && m.think <= 0){
+    m.think = 1.6 + Math.random()*4;
+    m.moving = Math.random() > 0.22;
+    m.yaw += (Math.random() - 0.5) * 2.4;
+  }
+  // 世界の端まで来たら中央へ向き直る
+  if (m.x < 8 || m.x > WX-8 || m.z < 8 || m.z > WZ-8){
+    m.yaw = yawTo(m.x, m.z, WX/2, WZ/2); m.moving = true;
+  }
+
+  let yaw = m.yaw;
+  if (m.side > 0){ m.side -= dt; yaw += m.sideDir * 1.25; }   // 壁ぎわを回り込む
+  m.dirYaw = yaw;
+  const fx = -Math.sin(yaw), fz = -Math.cos(yaw);
+  const feet = Math.floor(m.y + 0.1);
+  const ax = Math.floor(m.x + fx*0.75), az = Math.floor(m.z + fz*0.75);
+  const ahead = getBlock(ax, feet, az);
+  const aheadUp = getBlock(ax, feet+1, az);
+  const aheadDown = getBlock(ax, feet-1, az);
+
+  if (isSolid(ahead) && !isSolid(aheadUp)){
+    if (m.onGround) m.vy = 7.6;                      // 一段のぼる
+  } else if (isSolid(ahead) && isSolid(aheadUp)){    // 壁
+    if (goal){ if (m.side <= 0){ m.side = 0.9; m.sideDir = Math.random() < 0.5 ? -1 : 1; } }
+    else { m.yaw += 1.9 + Math.random(); m.think = Math.min(m.think, 1.2); }
+  } else if (!goal && (ahead === WATER || aheadDown === WATER)){
+    m.yaw += 2.3 + Math.random()*0.6;                // 水はきらい
+  } else if (!goal && m.onGround && !isSolid(aheadDown) && !isSolid(getBlock(ax, feet-2, az))){
+    m.yaw += 2.2 + Math.random()*0.8;                // がけ
+  }
+
+  const sp = (m.moving || m.startle > 0)
+           ? m.speed * (m.startle > 0 ? 2.3 : 1) * m.chase : 0;
+  m.vx += (fx*sp - m.vx) * Math.min(1, 10*dt);
+  m.vz += (fz*sp - m.vz) * Math.min(1, 10*dt);
+
+  const inWater = getBlock(Math.floor(m.x), Math.floor(m.y + 0.3), Math.floor(m.z)) === WATER;
+  if (m.kind === 'frog' && inWater){
+    m.vy += (m.swimY - m.vy) * Math.min(1, 7*dt);    // カエルは浮かず、自分で上下する
+  } else {
+    m.vy -= (inWater ? 6 : 26) * dt;
+    if (inWater) m.vy = Math.max(m.vy, 1.8);
+  }
+  if (m.vy < -40) m.vy = -40;
+
+  m.onGround = false;
+  m.x += m.vx * dt; collideAxis(m, 0, m.hw, m.ht);
+  m.z += m.vz * dt; collideAxis(m, 2, m.hw, m.ht);
+  m.y += m.vy * dt; collideAxis(m, 1, m.hw, m.ht);
+
+  m.x = Math.max(1.2, Math.min(WX - 1.2, m.x));
+  m.z = Math.max(1.2, Math.min(WZ - 1.2, m.z));
+  if (m.y < -4){                                     // 落ちたら地上へ戻す
+    const y = mobSurface(Math.floor(m.x), Math.floor(m.z));
+    m.y = y > 0 ? y + 0.02 : 34; m.vy = 0;
+  }
+  // ブロックに埋まって動けなくなったら地上へ出す
+  if (isSolid(getBlock(Math.floor(m.x), Math.floor(m.y + 0.1), Math.floor(m.z)))){
+    m.stuck += dt;
+    if (m.stuck > 0.4){
+      const y = mobSurface(Math.floor(m.x), Math.floor(m.z));
+      m.y = y >= 0 ? y + 0.02 : m.y + 1;
+      m.vy = 0; m.stuck = 0;
+      m.yaw += 2.1; m.think = 0.5;
+    }
+  } else m.stuck = 0;
+
+  // 鳴き声・あいさつ
+  m.voice -= dt;
+  if (m.voice <= 0){
+    m.voice = (m.kind === 'pig' ? 7 : m.kind === 'frog' ? 5 : 11) + Math.random()*14;
+    if (dist < 26){
+      if (m.kind === 'pig') Snd.oink(dist, m.startle > 0);
+      else if (m.kind === 'frog') Snd.croak(dist);
+      else Snd.npcHi(dist);
+    }
+  }
+
+  // 見た目の更新（遠いほど手を抜く）
+  const hidden = dist > LOD_HIDE;
+  if (m.model.visible === hidden) m.model.visible = !hidden;
+  if (hidden) return;                        // 霧の外なので描かない
+  m.model.position.set(m.x, m.y, m.z);
+  m.model.rotation.y = m.dirYaw + Math.PI;
+  m.model.updateMatrix();
+  if (dist > LOD_ANIM) return;               // 遠景では手足を止める
+  if (dist > 4 && (dxp*-Math.sin(player.yaw) + dzp*-Math.cos(player.yaw)) < 0) return;  // 背後も止める
+  const hv = Math.hypot(m.vx, m.vz);
+  if (m.kind === 'frog'){
+    const sub = m.wet > 0 &&
+      getBlock(Math.floor(m.x), Math.floor(m.y + 0.75), Math.floor(m.z)) === WATER;
+    const pitch = Math.max(-0.5, Math.min(0.5, -m.vy * 0.13));
+    animateFrog(m.model, hv, dt, m.vy > 1.4 || (!m.onGround && m.wet <= 0), sub, pitch);
+  } else if (m.kind === 'pig'){
+    animateQuadruped(m.model, hv, dt);
+  } else {
+    let headYaw = 0;
+    if (dist < 7){                                   // 近づくとこちらを見る
+      let d = yawTo(m.x, m.z, player.x, player.z) - m.yaw;
+      while (d >  Math.PI) d -= Math.PI*2;
+      while (d < -Math.PI) d += Math.PI*2;
+      headYaw = Math.max(-1.1, Math.min(1.1, d));
+    }
+    animateHumanoid(m.model, hv, dt, { airborne: !m.onGround, headYaw: headYaw, swing: m.swing });
+  }
+}
+
+/* =========================================================
+   10-C. 村づくり（仲間が共同で進める設計図）
+   ========================================================= */
+const Village = {
+  x: 0, y: 0, z: 0, kind: 'hut', w: 7, d: 7,
+  tasks: [], done: 0, workers: 0, maxWorkers: 24, retry: 0, idle: 0,
+  tokens: 18, rate: 18,          // 1秒あたりに世界へ加えられる変更の上限
+  ready: false,
+
+  // 平らで海より高い場所をさがす
+  findSite: function(w, d, ox, oz){
+    for (let tries = 0; tries < 140; tries++){
+      const a = Math.random()*Math.PI*2;
+      const r = tries < 60 ? 10 + Math.random()*18 : 14 + Math.random()*48;   // だんだん遠くまで探す
+      const cx = Math.round(ox + Math.cos(a)*r), cz = Math.round(oz + Math.sin(a)*r);
+      const hw = w >> 1, hd = d >> 1;
+      if (cx < hw+4 || cz < hd+4 || cx > WX-hw-5 || cz > WZ-hd-5) continue;
+      let base = -1, ok = true;
+      for (let x = cx-hw; x <= cx+hw && ok; x++)
+        for (let z = cz-hd; z <= cz+hd; z++){
+          const y = mobSurface(x, z);
+          if (y < SEA + 2){ ok = false; break; }
+          if (base < 0) base = y;
+          if (Math.abs(y - base) > 2){ ok = false; break; }
+          if (y < base) base = y;
+        }
+      if (!ok || base <= 0) continue;
+      // 誰かが手を加えた場所（プレイヤーの建物や既に建てた家）は避ける
+      for (let x = cx-hw-2; x <= cx+hw+2 && ok; x++)
+        for (let z = cz-hd-2; z <= cz+hd+2 && ok; z++){
+          if (x < 1 || z < 1 || x >= WX-1 || z >= WZ-1) continue;
+          for (let y = base-1; y <= base+5; y++){
+            const i = idx(x, y, z);
+            if (edits.has(i) && blocks[i] !== AIR){ ok = false; break; }
+          }
+        }
+      if (ok) return { x: cx, y: base, z: cz };
+    }
+    return null;
+  },
+
+  // 設計図から作業リストを組み立てる。t が AIR なら「壊す」作業
+  makeTasks: function(){
+    const T = [], hw = this.w >> 1, hd = this.d >> 1;
+    const base = this.y, kind = this.kind;
+    const H = kind === 'tower' ? 4 : 3;
+    const push = function(x, y, z, t){
+      if (x < 1 || z < 1 || x >= WX-1 || z >= WZ-1 || y < 1 || y >= WY-1) return;
+      if (getBlock(x, y, z) === t) return;
+      T.push({ x:x, y:y, z:z, t:t, owner:null, done:false });
+    };
+    const cw = hw + 2, cd = hd + 2;                                     // まわりを2マス広く整地する
+    for (let x = this.x-cw; x <= this.x+cw; x++)
+      for (let z = this.z-cd; z <= this.z+cd; z++){
+        for (let y = base; y < base + 16; y++) push(x, y, z, AIR);      // 木や斜面を上から崩す
+        if (getBlock(x, base-1, z) === AIR) push(x, base-1, z, DIRT);   // 穴をふさいで平らにする
+      }
+    for (let x = this.x-hw; x <= this.x+hw; x++){
+      for (let z = this.z-hd; z <= this.z+hd; z++){
+        const ex = (x === this.x-hw || x === this.x+hw);
+        const ez = (z === this.z-hd || z === this.z+hd);
+        const edge = ex || ez;
+        if (kind === 'tower'){
+          if (!edge) continue;
+          for (let y = base; y < base + H; y++) push(x, y, z, BRICK);
+        } else {
+          if (edge){
+            const door = (x === this.x && z === this.z-hd);
+            const win = (!ex || !ez) && ((x === this.x && ez) || (z === this.z && ex));
+            for (let y = base; y < base + H; y++){
+              if (door && y < base + 2) continue;
+              push(x, y, z, (win && y === base + 1) ? GLASS : PLANK);
+            }
+          }
+          push(x, base + H, z, PLANK);                                  // 屋根
+        }
+      }
+    }
+    if (kind === 'tower') push(this.x, base + H, this.z, GOLD);         // てっぺんの目印
+    this.tasks = T; this.done = 0; this.workers = 0; this.idle = 0;
+  },
+
+  newPlan: function(ox, oz){
+    const kind = Math.random() < 0.35 ? 'tower' : 'hut';
+    const w = kind === 'tower' ? 3 : (5 + 2*Math.floor(Math.random()*2));
+    const site = this.findSite(w, w, ox, oz);
+    if (!site){ this.ready = false; return false; }
+    this.kind = kind; this.w = w; this.d = w;
+    this.x = site.x; this.y = site.y; this.z = site.z;
+    this.makeTasks();
+    this.ready = true;
+    return true;
+  },
+
+  start: function(ox, oz){
+    if (this.newPlan(ox, oz)) return true;
+    if (this.newPlan(player.x, player.z)) return true;
+    if (this.newPlan(WX/2, WZ/2)) return true;
+    return this.newPlan(8 + Math.random()*(WX-16), 8 + Math.random()*(WZ-16));
+  },
+
+  tick: function(dt){
+    this.tokens = Math.min(this.rate, this.tokens + this.rate*dt);
+    if (!this.ready){                                   // 場所が見つからなかったので出直す
+      this.retry -= dt;
+      if (this.retry <= 0){ this.retry = 2.5; this.start(player.x, player.z); }
+      return;
+    }
+    if (this.done >= this.tasks.length){
+      if (!this.newPlan(this.x, this.z)) this.retry = 1.5;
+      return;
+    }
+    this.idle += dt;                                    // どうしても進まないときは作り直す
+    if (this.idle > 40 && !this.newPlan(this.x, this.z)) this.retry = 1.5;
+  },
+  spend: function(){
+    if (Net.on && Net.up && !Net.isHost()) return false;   // 世界に触るのはホストだけ
+    if (this.tokens < 1) return false;
+    this.tokens -= 1; return true;
+  },
+
+  // 手が空いている仲間に作業を割り当てる（近い作業から、低い段から）
+  claim: function(m){
+    if (!this.ready || this.workers >= this.maxWorkers) return null;
+    if (Math.abs(m.x - this.x) + Math.abs(m.z - this.z) > 130) return null;
+    let best = null, bestScore = 1e9;
+    for (let i = 0; i < this.tasks.length; i++){
+      const t = this.tasks[i];
+      if (t.done || t.owner) continue;
+      if (getBlock(t.x, t.y, t.z) === t.t){ t.done = true; this.done++; continue; }
+      const d = Math.abs(t.x - m.x) + Math.abs(t.z - m.z);
+      if (d > 30) continue;                            // 遠い作業は他の人に任せる
+      // 上に何か乗っている場所はまだ掘れないので後回し
+      const covered = (t.t === AIR && isSolid(getBlock(t.x, t.y + 1, t.z))) ? 1 : 0;
+      const flat = Math.hypot(t.x + 0.5 - m.x, t.z + 0.5 - m.z);
+      const near = (flat < 3.4 && Math.hypot(flat, t.y - m.y - 1.2) < 4.4);
+      const phase = (t.t === AIR) ? 0 : 1;             // まず更地にしてから建てる
+      const tier = (t.t === AIR) ? (WY - t.y) : t.y;   // 崩すのは上から、置くのは下から
+      // 届く作業→近い作業の順。歩く距離をできるだけ減らす
+      const score = (t.fail || 0)*1e8 + covered*1e7 + phase*1e6 + (near ? 0 : 1e5)
+                  + Math.round(flat)*1000 + tier;
+      if (score < bestScore){ bestScore = score; best = t; }
+    }
+    if (best){
+      best.owner = m; m.task = best; m.goalTime = 0;
+      m.lastDist = Math.hypot(best.x + 0.5 - m.x, best.z + 0.5 - m.z) + 0.5;
+      this.workers++;
+    }
+    return best;
+  },
+  giveUp: function(m){
+    const t = m.task;
+    if (!t) return;
+    t.fail = (t.fail || 0) + 1;
+    if (t.fail >= 5){ t.done = true; this.done++; }    // 5回だめならその1個は諦める
+    this.release(m);
+  },
+  release: function(m){
+    if (m.task){ if (m.task.owner === m) m.task.owner = null; m.task = null; this.workers--; }
+    if (this.workers < 0) this.workers = 0;
+  },
+  finish: function(m){
+    if (!m.task) return;
+    m.task.done = true; this.done++; this.idle = 0;
+    m.task.owner = null; m.task = null; this.workers--;
+    if (this.workers < 0) this.workers = 0;
+  }
+};
+
+// 仲間の行動：村づくり
+function workerGoal(m, dt, dist){
+  m.cool -= dt;
+  if (m.task){
+    if (m.task.done || m.task.owner !== m) Village.release(m);
+    else {
+      // 近づけている間はいくら遠くても続ける。止まったときだけ見切る
+      const d = Math.hypot(m.task.x + 0.5 - m.x, m.task.z + 0.5 - m.z);
+      if (d < m.lastDist - 0.12){ m.lastDist = d; m.goalTime = 0; }
+      else {
+        m.goalTime += dt;
+        if (m.goalTime > 3.2) Village.giveUp(m);        // 進めないので後回し
+      }
+    }
+  }
+  if (!m.task && m.cool <= 0 && Village.ready) Village.claim(m);
+  if (!m.task){                                         // 手が空いていたら現場へ寄っていく
+    if (Village.ready){
+      const dv = Math.hypot(Village.x - m.x, Village.z - m.z);
+      if (dv > 6 && dv < 96){
+        m.yaw = yawTo(m.x, m.z, Village.x, Village.z);
+        m.moving = true;
+        m.chase = 1.35;
+        return true;
+      }
+    }
+    return false;
+  }
+
+  const t = m.task;
+  const gx = t.x + 0.5, gz = t.z + 0.5;
+  const dx = gx - m.x, dz = gz - m.z;
+  const flat = Math.hypot(dx, dz);
+  const dy = t.y - m.y;
+  m.yaw = yawTo(m.x, m.z, gx, gz);
+  m.moving = flat > 1.35;
+  m.chase = 1.4;                                        // 現場へは急ぐ
+
+  const reach = Math.hypot(flat, dy - 1.2);           // 胸の高さから測る
+  if (flat < 3.6 && reach < 4.4 && m.cool <= 0 && Village.spend()){
+    if (getBlock(t.x, t.y, t.z) !== t.t){
+      editBlock(t.x, t.y, t.z, t.t);
+      markDirty(t.x, t.z);
+      Snd.work(dist, t.t !== AIR);
+    }
+    Village.finish(m);
+    m.swing = 1;
+    m.cool = 0.16 + Math.random()*0.26;
+  }
+  return true;
+}
+
+// ブタの行動：近くの人や仲間を追いかける
+let NPCS = [], npcScan = 0, npcRefresh = 0;
+function refreshNPCs(dt){
+  npcRefresh -= dt;
+  if (npcRefresh > 0) return;
+  npcRefresh = 0.5;
+  NPCS.length = 0;
+  for (let i = 0; i < MOBS.length; i++) if (MOBS[i].kind === 'maikkii') NPCS.push(MOBS[i]);
+}
+const TRAIN_MAX = 16;                                  // 1本の行列につながれる最大の頭数
+
+// 行列の最後尾をさがす
+function trainTail(leader, key){
+  let t = leader, n = 0;
+  while (t[key] && n < TRAIN_MAX + 4){
+    const nx = t[key];
+    if (!nx.alive || nx.follow !== t){ t[key] = null; break; }
+    t = nx; n++;
+  }
+  return { tail: t, len: n };
+}
+function leaveTrain(m){
+  const key = m.linkKey, prev = m.follow, next = m[key];
+  if (prev && prev[key] === m) prev[key] = null;
+  m.follow = null; m[key] = null;
+  if (next){
+    if (prev && prev !== m){ next.follow = prev; prev[key] = next; }        // 列をつなぎ直す
+    else next.follow = null;
+  }
+}
+
+function pigGoal(m, dt, dist){
+  // 海はきらい。ぬれていたら何をおいても陸へ上がる
+  const px = Math.floor(m.x), pz = Math.floor(m.z);
+  const wet = (getBlock(px, Math.floor(m.y), pz) === WATER)
+           || (getBlock(px, Math.floor(m.y + 0.6), pz) === WATER);
+  m.wet = wet ? 0.6 : Math.max(0, m.wet - dt);
+  m.hop -= dt;
+  if (m.wet > 0){
+    if (m.follow) leaveTrain(m);
+    m.destTimer -= dt;
+    if (!m.dest || m.destTimer <= 0){ m.dest = findLand(m); m.destTimer = 1.8; }
+    if (m.dest){
+      m.yaw = yawTo(m.x, m.z, m.dest.x, m.dest.z);
+      m.moving = true;
+      m.chase = 1.9;                                   // 必死に泳ぐ
+      if (m.hop <= 0){ m.vy = Math.max(m.vy, 5.0); m.hop = 0.42; }   // ばしゃばしゃ跳ねる
+      if (m.voice > 1.5 && Math.random() < 0.02) m.voice = 0;        // あわてて鳴く
+      return true;
+    }
+  }
+  m.dest = null;
+
+  // いまついていく相手がまだ有効か
+  if (m.follow){
+    const f = m.follow;
+    const ok = (f === player) || (f.alive && (f.kind !== 'pig' || f.follow));
+    if (!ok || Math.hypot(f.x - m.x, f.z - m.z) > 18) leaveTrain(m);
+  }
+  m.followTimer -= dt;
+  if (!m.follow && m.followTimer <= 0){
+    m.followTimer = 0.5 + Math.random()*0.6;
+    let best = 13, leader = null;
+    if (dist < best){ best = dist; leader = player; }
+    const n = NPCS.length;
+    if (n){                                            // 仲間も探す（一度に見るのは少しだけ）
+      const look = Math.min(n, 24);
+      for (let k = 0; k < look; k++){
+        const o = NPCS[(npcScan + k) % n];
+        const d = Math.hypot(o.x - m.x, o.z - m.z);
+        if (d < best){ best = d; leader = o; }
+      }
+      npcScan = (npcScan + look) % n;
+    }
+    if (leader){
+      const t = trainTail(leader, 'trainNext');         // 先頭からたどって最後尾につく
+      if (t.len < TRAIN_MAX && t.tail !== m){
+        m.follow = t.tail;
+        t.tail.trainNext = m;
+      }
+    }
+  }
+  const f = m.follow;
+  if (!f) return false;
+
+  // 相手の少し後ろを目標にするので、自然と一列になる
+  const lead = f === player ? f.yaw : f.dirYaw;
+  const gap = (f.kind === 'pig') ? 1.25 : 1.9;
+  const gx = f.x + Math.sin(lead)*gap, gz = f.z + Math.cos(lead)*gap;
+  const d = Math.hypot(gx - m.x, gz - m.z);
+  if (d < 0.5){
+    m.moving = false;
+    m.yaw = yawTo(m.x, m.z, f.x, f.z);
+    return true;
+  }
+  const want = yawTo(m.x, m.z, gx, gz);
+  const dir = stepDir(m, want, false);                 // 水に入ってまでは追わない
+  if (dir === null){ m.moving = false; m.yaw = want; return true; }
+  m.yaw = dir;
+  m.moving = true;
+  m.chase = d > 3.5 ? 1.5 : 1.12;                      // 離されたら急いで追いつく
+  if (m.voice > 3 && Math.random() < 0.004) m.voice = 0;
+  return true;
+}
+
+// 島じゅうの水面と陸地を粗く拾っておく（遠くの水辺・陸地も目指せるように）
+let WATER_SPOTS = [], LAND_SPOTS = [], waterScanAt = 0;
+function scanWater(){
+  WATER_SPOTS = []; LAND_SPOTS = [];
+  for (let x = 2; x < WX-2; x += 3)
+    for (let z = 2; z < WZ-2; z += 3){
+      if (getBlock(x, SEA, z) === WATER){
+        if (getBlock(x, SEA+1, z) === AIR) WATER_SPOTS.push(x + 0.5, z + 0.5);
+      } else LAND_SPOTS.push(x + 0.5, z + 0.5);
+    }
+  waterScanAt = 0;
+}
+function nearestSpot(list, m, wantWater){
+  let bx = 0, bz = 0, bd = 1e9;
+  for (let i = 0; i < list.length; i += 2){
+    const x = list[i], z = list[i+1];
+    const d = Math.abs(x - m.x) + Math.abs(z - m.z);
+    if (d >= bd) continue;
+    const isW = getBlock(Math.floor(x), SEA, Math.floor(z)) === WATER;
+    if (isW !== wantWater) continue;
+    bd = d; bx = x; bz = z;
+  }
+  return bd < 1e9 ? { x: bx, z: bz } : null;
+}
+function findWater(m){ return nearestSpot(WATER_SPOTS, m, true); }
+function findLand(m){ return nearestSpot(LAND_SPOTS, m, false); }
+
+// 進みたい方向のうち、水の中（または水の外）にとどまれる向きをさがす
+function stepDir(m, want, needWater){
+  const y = Math.floor(m.y);
+  const offs = [0, 0.45, -0.45, 0.95, -0.95, 1.6, -1.6, 2.3, -2.3];
+  for (let i = 0; i < offs.length; i++){
+    const a = want + offs[i];
+    const x = Math.floor(m.x - Math.sin(a)*1.0), z = Math.floor(m.z - Math.cos(a)*1.0);
+    const isW = (getBlock(x, y, z) === WATER) || (getBlock(x, y-1, z) === WATER);
+    if (isW === needWater) return a;
+  }
+  return null;
+}
+function waterDir(m, want){ return stepDir(m, want, true); }
+
+// カエルの行動：水の中では人のうしろに一列、陸では急いで水へ
+function frogGoal(m, dt, dist){
+  const mx = Math.floor(m.x), mz = Math.floor(m.z);
+  const wet = (getBlock(mx, Math.floor(m.y), mz) === WATER)
+           || (getBlock(mx, Math.floor(m.y - 0.15), mz) === WATER);
+  m.wet = wet ? 0.7 : Math.max(0, m.wet - dt);        // 跳ねた瞬間に陸と誤判定しないよう余裕をもつ
+  m.hop -= dt;
+
+  if (m.wet <= 0){
+    // 陸にいる：あわてて水へ向かう
+    if (m.follow) leaveTrain(m);
+    m.destTimer -= dt;
+    if (!m.dest || m.destTimer <= 0){ m.dest = findWater(m); m.destTimer = 2.2; }
+    if (!m.dest) return false;
+    m.yaw = yawTo(m.x, m.z, m.dest.x, m.dest.z);
+    m.moving = true;
+    m.chase = 1.75;                                   // 急ぎ足
+    if (m.onGround && m.hop <= 0){ m.vy = 7.4; m.hop = 0.34; }   // 大きくぴょんぴょん
+    return true;
+  }
+  m.dest = null;
+
+  // 水の中：いまついていく相手が有効か
+  if (m.follow){
+    const f = m.follow;
+    const ok = (f === player) || (f.alive && (f.kind === 'maikkii' || (f.kind === 'frog' && f.follow)));
+    if (!ok || Math.hypot(f.x - m.x, f.z - m.z) > 18) leaveTrain(m);
+  }
+  m.followTimer -= dt;
+  if (!m.follow && m.followTimer <= 0){
+    m.followTimer = 0.5 + Math.random()*0.6;
+    let best = 15, leader = null;                     // 人でも仲間でも、近いほうにつく
+    if (dist < best){ best = dist; leader = player; }
+    const n = NPCS.length;
+    if (n){
+      const look = Math.min(n, 24);
+      for (let k = 0; k < look; k++){
+        const o = NPCS[(npcScan + k) % n];
+        const d = Math.hypot(o.x - m.x, o.z - m.z);
+        if (d < best){ best = d; leader = o; }
+      }
+      npcScan = (npcScan + look) % n;
+    }
+    if (leader){
+      const t = trainTail(leader, 'frogNext');
+      if (t.len < TRAIN_MAX && t.tail !== m){ m.follow = t.tail; t.tail.frogNext = m; }
+    }
+  }
+
+  // 頭まで水につかっているか（沈んでいれば跳ねずにスイスイ泳ぐ）
+  const headWet = getBlock(mx, Math.floor(m.y + 0.75), mz) === WATER;
+  const canRise = getBlock(mx, Math.floor(m.y + 0.95), mz) === WATER;
+  const setSwim = function(v){
+    if (v > 0 && !canRise) v = Math.min(v, 0.3);      // 水面から飛び出さない
+    m.swimY = Math.max(-3.4, Math.min(3.4, v));
+  };
+
+  const f = m.follow;
+  if (f){
+    const lead = (f === player) ? f.yaw : f.dirYaw;
+    const gap = (f.kind === 'frog') ? 0.95 : 1.6;
+    const gx = f.x + Math.sin(lead)*gap, gz = f.z + Math.cos(lead)*gap;
+    const gy = (f === player) ? f.y + 0.5 : f.y;      // 相手と同じ深さまで潜る
+    const d = Math.hypot(gx - m.x, gz - m.z);
+    setSwim((gy - m.y) * 2.4);
+    if (d < 0.45){
+      m.moving = false;
+      m.yaw = yawTo(m.x, m.z, f.x, f.z);
+    } else {
+      const want = yawTo(m.x, m.z, gx, gz);
+      const dir = waterDir(m, want);                  // 水から上がってまで追いかけない
+      if (dir === null){ m.moving = false; m.yaw = want; }
+      else {
+        m.yaw = dir; m.moving = true;
+        m.chase = d > 3 ? 1.45 : 1.05;
+        // 水面にいるときだけ跳ねる。もぐっているときは平泳ぎで進む
+        if (!headWet && m.hop <= 0){ m.vy = 5.2; m.hop = 0.5 + Math.random()*0.2; }
+      }
+    }
+    return true;
+  }
+
+  // 相手がいなければ水の中をのんびり。ときどき深さも変える
+  if (m.think <= 0){
+    m.think = 2 + Math.random()*3;
+    m.moving = Math.random() > 0.35;
+    m.yaw += (Math.random() - 0.5) * 2.6;
+    let top = Math.floor(m.y), bot = Math.floor(m.y);
+    while (top < WY-2 && getBlock(mx, top+1, mz) === WATER) top++;
+    while (bot > 1 && getBlock(mx, bot-1, mz) === WATER) bot--;
+    m.diveY = bot + 0.1 + Math.random() * Math.max(0.2, top - bot);
+  }
+  setSwim((m.diveY - m.y) * 1.7);
+  if (m.moving){
+    const dir = waterDir(m, m.yaw);
+    if (dir === null){ m.yaw += 2.2; m.moving = false; }
+    else {
+      m.yaw = dir;
+      if (!headWet && m.hop <= 0){ m.vy = 4.4; m.hop = 0.9 + Math.random()*0.7; }
+    }
+  }
+  return true;
+}
+
+function updateMobs(dt){
+  waterScanAt -= dt;
+  if (waterScanAt <= 0){ scanWater(); waterScanAt = 25; }
+  refreshNPCs(dt);
+  Village.tick(dt);
+  for (let i = 0; i < MOBS.length; i++) updateMob(MOBS[i], dt);
+}
+
+function clearMobs(){
+  for (let i = 0; i < MOBS.length; i++){
+    MOBS[i].alive = false;
+    MOBS[i].trainNext = null; MOBS[i].frogNext = null; MOBS[i].follow = null;
+    scene.remove(MOBS[i].model);
+  }
+  player.trainNext = null; player.frogNext = null;
+  MOBS.length = 0;
+  NPCS.length = 0;
+  Village.workers = 0;
+  for (let i = 0; i < Village.tasks.length; i++) Village.tasks[i].owner = null;
+}
+// 水面にカエルを湧かせる
+function spawnFrogs(count){
+  let placed = 0, tries = 0;
+  while (placed < count && tries < 4000){
+    tries++;
+    const x = 3 + Math.floor(Math.random()*(WX-6));
+    const z = 3 + Math.floor(Math.random()*(WZ-6));
+    if (getBlock(x, SEA, z) !== WATER) continue;
+    if (getBlock(x, SEA+1, z) !== AIR) continue;
+    makeMob('frog', x + 0.5, SEA + 0.05, z + 0.5);
+    placed++;
+  }
+  return placed;
+}
+function populate(){
+  spawnMobs(4, Math.floor(player.x), Math.floor(player.z), 22);   // まず近くに
+  spawnMobs(('ontouchstart' in window) ? 7 : 13);                 // 残りは島じゅうに
+  spawnFrogs(('ontouchstart' in window) ? 4 : 8);                 // カエルは水辺に
+}
+// セーブから住人を戻す
+function restoreMobs(list){
+  clearMobs();
+  if (!list || !list.length){ populate(); return; }
+  for (let i = 0; i < list.length; i++){
+    const d = list[i];
+    if (!d || !isFinite(d.x) || !isFinite(d.y) || !isFinite(d.z)) continue;
+    makeMob(d.k === 'pig' ? 'pig' : (d.k === 'frog' ? 'frog' : 'maikkii'),
+            Math.max(1.2, Math.min(WX-1.2, d.x)), Math.max(0, Math.min(WY-2, d.y)),
+            Math.max(1.2, Math.min(WZ-1.2, d.z)),
+            { yaw: d.a, scale: d.s, shirt: d.c });
+  }
+  if (!MOBS.length) populate();
+}
+
+function startleMob(m){
+  const d = Math.hypot(player.x - m.x, player.z - m.z);
+  if (m.kind === 'pig'){
+    m.startle = 2.6 + Math.random();
+    m.moving = true; m.think = 3;
+    leaveTrain(m); m.followTimer = 2.6;
+    m.yaw = yawTo(player.x, player.z, m.x, m.z);      // ブタは驚いて逃げる
+    if (m.onGround) m.vy = 5.4;
+    Snd.oink(d, true);
+  } else if (m.kind === 'frog'){
+    leaveTrain(m); m.followTimer = 2.2;
+    m.yaw = yawTo(player.x, player.z, m.x, m.z);      // カエルはぴょんと逃げる
+    m.moving = true; m.think = 2.5;
+    if (m.onGround) m.vy = 7.6;
+    m.hop = 0.2;
+    Snd.croak(Math.min(d, 3));
+  } else {
+    Village.release(m);                               // 仲間は作業をやめて…
+    m.look = 2.8 + Math.random()*1.4;                 // …こちらに顔を向ける
+    m.yaw = yawTo(m.x, m.z, player.x, player.z);
+    m.moving = false;
+    m.think = m.look + 0.6;
+    m.cool = m.look;
+    Snd.npcHi(Math.min(d, 3));
+  }
+  m.voice = 4 + Math.random()*8;
+}
+
+// 照準の先にいるモブを探す
+function mobUnderCrosshair(maxDist){
+  const ox = player.x, oy = player.y + EYE, oz = player.z;
+  const dx = -Math.sin(player.yaw)*Math.cos(player.pitch);
+  const dy =  Math.sin(player.pitch);
+  const dz = -Math.cos(player.yaw)*Math.cos(player.pitch);
+  let best = null, bestT = maxDist;
+  for (let i = 0; i < MOBS.length; i++){
+    const m = MOBS[i];
+    const cx = m.x - ox, cy = m.y + m.ht*0.55 - oy, cz = m.z - oz;
+    const t = cx*dx + cy*dy + cz*dz;
+    if (t < 0 || t > bestT) continue;
+    const px = cx - dx*t, py = cy - dy*t, pz = cz - dz*t;
+    const r = m.hw + 0.45;
+    if (px*px + py*py + pz*pz < r*r){ best = m; bestT = t; }
+  }
+  return best;
+}
+
+/* =========================================================
+   11. ブロックへのレイキャスト（DDA）
+   ========================================================= */
+function raycast(maxDist){
+  const ox = player.x, oy = player.y + EYE, oz = player.z;
+  const nz0 = function(v){ return Math.abs(v) < 1e-6 ? 1e-6 : v; };
+  const dx = nz0(-Math.sin(player.yaw)*Math.cos(player.pitch));
+  const dy = nz0( Math.sin(player.pitch));
+  const dz = nz0(-Math.cos(player.yaw)*Math.cos(player.pitch));
+  let x = Math.floor(ox), y = Math.floor(oy), z = Math.floor(oz);
+  const sx = dx > 0 ? 1 : -1, sy = dy > 0 ? 1 : -1, sz = dz > 0 ? 1 : -1;
+  const dtx = Math.abs(1/dx), dty = Math.abs(1/dy), dtz = Math.abs(1/dz);
+  let tx = (dx > 0 ? (x+1-ox) : (ox-x)) * dtx;
+  let ty = (dy > 0 ? (y+1-oy) : (oy-y)) * dty;
+  let tz = (dz > 0 ? (z+1-oz) : (oz-z)) * dtz;
+  let nx = 0, ny = 0, nz = 0, t = 0;
+  while (t <= maxDist){
+    const b = getBlock(x, y, z);
+    if (b !== AIR && b !== WATER && inWorld(x, y, z))
+      return { x:x, y:y, z:z, nx:nx, ny:ny, nz:nz, block:b };
+    if (tx < ty && tx < tz){ x += sx; t = tx; tx += dtx; nx = -sx; ny = 0; nz = 0; }
+    else if (ty < tz){       y += sy; t = ty; ty += dty; nx = 0; ny = -sy; nz = 0; }
+    else {                   z += sz; t = tz; tz += dtz; nx = 0; ny = 0; nz = -sz; }
+  }
+  return null;
+}
+
+let hotIndex = 0;
+function boxOverlapsPlayer(x, y, z){
+  if (player.x + PW > x && player.x - PW < x+1 &&
+      player.y + PH > y && player.y      < y+1 &&
+      player.z + PW > z && player.z - PW < z+1) return true;
+  for (let i = 0; i < MOBS.length; i++){
+    const m = MOBS[i];
+    if (m.x + m.hw > x && m.x - m.hw < x+1 &&
+        m.y + m.ht > y && m.y        < y+1 &&
+        m.z + m.hw > z && m.z - m.hw < z+1) return true;
+  }
+  return false;
+}
+function digBlock(){
+  const mob = mobUnderCrosshair(5);
+  if (mob){ startleMob(mob); player.swing = 1; return; }   // 住人はこわせない
+  const hit = raycast(6);
+  if (!hit) return;
+  Snd.dig(hit.block);
+  editBlock(hit.x, hit.y, hit.z, AIR);
+  markDirty(hit.x, hit.z, true);
+  player.swing = 1; player.broke++;
+  document.getElementById('broke').textContent = player.broke;
+}
+function putBlock(){
+  const hit = raycast(6);
+  if (!hit) return;
+  const x = hit.x + hit.nx, y = hit.y + hit.ny, z = hit.z + hit.nz;
+  if (!inWorld(x, y, z)) return;
+  if (getBlock(x, y, z) !== AIR && getBlock(x, y, z) !== WATER) return;
+  if (boxOverlapsPlayer(x, y, z)) return;
+  editBlock(x, y, z, HOTBAR[hotIndex]);
+  markDirty(x, z, true);
+  Snd.place();
+  player.swing = 1;
+}
+
+/* =========================================================
+   12. UI
+   ========================================================= */
+const hotbarEl = document.getElementById('hotbar');
+const slotNameEl = document.getElementById('slotname');
+function buildHotbar(){
+  HOTBAR.forEach(function(type, i){
+    const d = document.createElement('div');
+    d.className = 'slot';
+    const n = document.createElement('i'); n.textContent = (i+1) % 10;
+    const cv = document.createElement('canvas'); cv.width = cv.height = 16;
+    const g = cv.getContext('2d');
+    const tile = TILES[type][0];
+    g.drawImage(ATLAS.canvas, (tile % ATLAS_N)*TS, ((tile/ATLAS_N)|0)*TS, TS, TS, 0, 0, 16, 16);
+    d.appendChild(cv); d.appendChild(n);
+    d.addEventListener('click', function(){ selectSlot(i); });
+    hotbarEl.appendChild(d);
+  });
+}
+function selectSlot(i){
+  hotIndex = i;
+  const slots = hotbarEl.children;
+  for (let k = 0; k < slots.length; k++) slots[k].classList.toggle('on', k === i);
+  held.geometry.dispose();
+  held.geometry = heldGeometry(HOTBAR[i]);
+  slotNameEl.textContent = NAMES[HOTBAR[i]];
+  slotNameEl.classList.add('show');
+  clearTimeout(selectSlot._t);
+  selectSlot._t = setTimeout(function(){ slotNameEl.classList.remove('show'); }, 1100);
+  Snd.select();
+}
+
+const bubbleEl = document.getElementById('bubble');
+
+// 見ている場所に住人を呼ぶ
+function callMob(kind, count){
+  count = count || 1;
+  const hit = raycast(6);
+  let x, y, z;
+  if (hit && hit.ny === 1){ x = hit.x + 0.5; y = hit.y + 1.02; z = hit.z + 0.5; }
+  else {
+    const fx = -Math.sin(player.yaw), fz = -Math.cos(player.yaw);
+    x = player.x + fx*2; z = player.z + fz*2;
+    let s = mobSurface(Math.floor(x), Math.floor(z));
+    if (s < 0 && getBlock(Math.floor(x), SEA, Math.floor(z)) === WATER) s = SEA;
+    if (s < 0){ toast('ここには呼べません'); return; }
+    y = s + 0.02;
+  }
+  let made = 0;
+  for (let i = 0; i < count; i++){
+    // まとめて呼ぶときは少しずらして置く
+    const a = Math.random()*Math.PI*2, r = i === 0 ? 0 : 0.6 + Math.random()*1.6;
+    const mx = Math.max(1.5, Math.min(WX-1.5, x + Math.cos(a)*r));
+    const mz = Math.max(1.5, Math.min(WZ-1.5, z + Math.sin(a)*r));
+    const sy = mobSurface(Math.floor(mx), Math.floor(mz));
+    if (makeMob(kind, mx, sy >= 0 ? sy + 0.02 : y + 0.2, mz)) made++;
+  }
+  if (!made) return;
+  if (kind === 'pig') Snd.oink(1, true); else Snd.npcHi(1);
+  updateMobCount();
+  Store.dirty = true;
+  toast(MOBS.length > 300
+    ? NAMES_MOB[kind] + ' +' + made + '（住人 ' + MOBS.length + '人・増えるほど重くなります）'
+    : NAMES_MOB[kind] + 'が ' + (made > 1 ? made + '体 ' : '') + 'やってきた');
+}
+
+// 住人にお帰りいただく（2回押しで実行）
+let clearArmed = 0;
+function sendHome(){
+  if (!MOBS.length){ toast('いま住人はいません'); return; }
+  if (clearArmed <= 0){
+    clearArmed = 4;
+    toast('もう一度 C で全員帰します（' + MOBS.length + '人）');
+    return;
+  }
+  clearArmed = 0;
+  const n = MOBS.length;
+  clearMobs(); updateMobCount();
+  Store.dirty = true;
+  toast(n + '人が帰りました');
+}
+function updateMobCount(){
+  let pigs = 0, frogs = 0;
+  for (let i = 0; i < MOBS.length; i++){
+    if (MOBS[i].kind === 'pig') pigs++;
+    else if (MOBS[i].kind === 'frog') frogs++;
+  }
+  document.getElementById('mobs').textContent =
+    'ブタ ' + pigs + ' / カエル ' + frogs + ' / なかま ' + (MOBS.length - pigs - frogs);
+}
+
+const LINES = ['ハーイ！ マイッキー！', 'ブロック、こわしちゃおう！', 'ここ、いいながめだなあ',
+               'そろそろ おうちを たてたい', 'あっちに 木が いっぱいある！', 'およぐの、けっこう すきかも'];
+function talk(text){
+  const line = text || LINES[Math.floor(Math.random()*LINES.length)];
+  bubbleEl.textContent = line;
+  bubbleEl.classList.add('show');
+  Snd.hi();
+  clearTimeout(talk._t);
+  talk._t = setTimeout(function(){ bubbleEl.classList.remove('show'); }, 2600);
+  try {
+    if (window.speechSynthesis){
+      const u = new SpeechSynthesisUtterance(line);
+      u.lang = 'ja-JP'; u.pitch = 1.6; u.rate = 1.05; u.volume = 0.9;
+      window.speechSynthesis.cancel();
+      window.speechSynthesis.speak(u);
+    }
+  } catch(e){}
+}
+
+/* =========================================================
+   12-B. カメラで顔を撮る
+   ========================================================= */
+// ゆるい肌色判定（色白から色黒まで広くカバーする）
+function looseSkin(r, g, b){
+  if (r < 32) return false;
+  if (r < g || r < b) return false;
+  if (Math.max(r,g,b) - Math.min(r,g,b) < 6) return false;
+  const cr = 128 + 0.5*r - 0.418688*g - 0.081312*b;
+  const cb = 128 - 0.168736*r - 0.331264*g + 0.5*b;
+  return cr > 131 && cr < 192 && cb > 70 && cb < 140;
+}
+
+// 検出用に縮小したフレームを作る（鏡像にはしない）
+function grabFrame(video, DW){
+  const vw = video.videoWidth, vh = video.videoHeight;
+  if (!vw || !vh) return null;
+  const w = DW, h = Math.max(24, Math.round(DW * vh / vw));
+  const cv = document.createElement('canvas');
+  cv.width = w; cv.height = h;
+  const c = cv.getContext('2d');
+  c.drawImage(video, 0, 0, w, h);
+  return { ctx: c, w: w, h: h };
+}
+
+// 顔の位置を推定する。戻り値は縮小フレーム上の正方形
+function detectFaceBox(px, W, H){
+  const ocx = W*0.5, ocy = H*0.46, orx = W*0.27, ory = H*0.31;
+  const guide = { cx: ocx, cy: ocy, s: ory*2, ok: false };
+
+  // 1) ガイドの内側（頬のあたり）から基準の肌色を取る。中央値なので影や照明に強い
+  const rs = [], gs = [], bs = [];
+  for (let y = 0; y < H; y += 2)
+    for (let x = 0; x < W; x += 2){
+      const dx = (x - ocx)/(orx*0.62), dy = (y - (ocy + ory*0.10))/(ory*0.5);
+      if (dx*dx + dy*dy > 1) continue;
+      const p = (y*W + x)*4;
+      if (!looseSkin(px[p], px[p+1], px[p+2])) continue;
+      rs.push(px[p]); gs.push(px[p+1]); bs.push(px[p+2]);
+    }
+  if (rs.length < 30) return guide;
+  const mid = function(a){ a.sort(function(u, v){ return u - v; }); return a[a.length >> 1]; };
+  const r0 = mid(rs), g0 = mid(gs), b0 = mid(bs);
+  const sum0 = r0 + g0 + b0;
+  const cr0 = r0/sum0, cg0 = g0/sum0;
+  const lum0 = 0.299*r0 + 0.587*g0 + 0.114*b0;
+
+  // 2) 基準色に近い画素を集める。明るさではなく色味で比べるので影に強い
+  const bx0 = Math.max(0, (ocx - orx*2.0)|0), bx1 = Math.min(W, (ocx + orx*2.0)|0);
+  const by0 = Math.max(0, (ocy - ory*1.8)|0), by1 = Math.min(H, (ocy + ory*2.0)|0);
+  const mask = new Uint8Array(W*H);
+  for (let y = by0; y < by1; y++)
+    for (let x = bx0; x < bx1; x++){
+      const p = (y*W + x)*4;
+      const r = px[p], g = px[p+1], b = px[p+2], sm = r + g + b;
+      if (sm < 45) continue;
+      if (Math.abs(r/sm - cr0) > 0.028 || Math.abs(g/sm - cg0) > 0.028) continue;
+      const lum = 0.299*r + 0.587*g + 0.114*b;
+      if (lum < lum0*0.40 || lum > lum0*1.85) continue;
+      mask[y*W + x] = 1;
+    }
+
+  // 3) ガイド内の画素を種にして、つながっている部分だけを顔とみなす
+  //    （背景の壁や、離れた場所に写った手はここで除かれる）
+  const q = new Int32Array(W*H), seen = new Uint8Array(W*H);
+  let qh = 0, qt = 0;
+  for (let y = by0; y < by1; y++)
+    for (let x = bx0; x < bx1; x++){
+      const dx = (x - ocx)/orx, dy = (y - ocy)/ory;
+      if (dx*dx + dy*dy > 1) continue;
+      const i = y*W + x;
+      if (mask[i] && !seen[i]){ seen[i] = 1; q[qt++] = i; }
+    }
+  if (qt < 25) return guide;
+
+  const rowN = new Int32Array(H), rowLum = new Float64Array(H);
+  const rowMin = new Int32Array(H).fill(W), rowMax = new Int32Array(H).fill(-1);
+  let area = 0, minY = H, maxY = 0;
+  while (qh < qt){
+    const i = q[qh++], x = i % W, y = (i / W) | 0;
+    const p = i*4;
+    area++; rowN[y]++;
+    rowLum[y] += 0.299*px[p] + 0.587*px[p+1] + 0.114*px[p+2];
+    if (x < rowMin[y]) rowMin[y] = x;
+    if (x > rowMax[y]) rowMax[y] = x;
+    if (y < minY) minY = y;
+    if (y > maxY) maxY = y;
+    if (x > bx0     && mask[i-1] && !seen[i-1]){ seen[i-1] = 1; q[qt++] = i-1; }
+    if (x < bx1-1   && mask[i+1] && !seen[i+1]){ seen[i+1] = 1; q[qt++] = i+1; }
+    if (y > by0     && mask[i-W] && !seen[i-W]){ seen[i-W] = 1; q[qt++] = i-W; }
+    if (y < by1-1   && mask[i+W] && !seen[i+W]){ seen[i+W] = 1; q[qt++] = i+W; }
+  }
+  if (area < (bx1-bx0)*(by1-by0)*0.012) return guide;   // 小さすぎるので顔ではない
+
+  // 4) 横幅が最大の行を基準に、あごと額を決める（首は細いので自然に切れる）
+  let peak = minY, peakN = 0;
+  for (let y = minY; y <= maxY; y++) if (rowN[y] > peakN){ peakN = rowN[y]; peak = y; }
+  let chin = peak, brow = peak;
+  for (let y = peak; y <= maxY; y++){ if (rowN[y] < peakN*0.55) break; chin = y; }
+  for (let y = peak; y >= minY; y--){ if (rowN[y] < peakN*0.34) break; brow = y; }
+  let left = W, right = -1;
+  for (let y = brow; y <= chin; y++){
+    if (rowMax[y] < 0) continue;
+    if (rowMin[y] < left) left = rowMin[y];
+    if (rowMax[y] > right) right = rowMax[y];
+  }
+  if (right <= left) return guide;
+
+  // 背景まで肌色と判定されて広がってしまった場合は、無理に切らずガイド枠に任せる
+  if (right - left > (bx1-bx0)*0.86 || chin - brow > (by1-by0)*0.86) return guide;
+
+  const fw = right - left, fh = chin - brow;
+
+  // 髪の色が肌に近いと髪まで領域に入る。上端が暗ければ髪込みとみなして倍率を変える
+  let topLum = 0, topN = 0;
+  const topEnd = Math.min(chin, brow + Math.max(1, (fh*0.25)|0));
+  for (let y = brow; y <= topEnd; y++){ topLum += rowLum[y]; topN += rowN[y]; }
+  const withHair = topN > 0 && (topLum/topN) < lum0*0.72;
+
+  let size = withHair ? Math.max(fw*1.18, fh*1.08)   // すでに頭全体が入っている
+                      : Math.max(fw*1.45, fh*1.34);  // 肌だけなので髪のぶん広げる
+  size = Math.max(ory*0.9, Math.min(size, ory*3.4));
+  return { cx: (left + right)/2, cy: chin - size*0.435, s: size, ok: true };
+}
+
+function analyzeFace(video, DW){
+  const f = grabFrame(video, DW || 200);
+  if (!f) return null;
+  let px;
+  try { px = f.ctx.getImageData(0, 0, f.w, f.h).data; } catch(e){ return null; }
+  return { box: detectFaceBox(px, f.w, f.h), w: f.w, h: f.h };
+}
+
+// 顔の部分を、カメラの解像度のまま切り出す（縮小してドット絵にはしない）
+function captureFace(video){
+  const vw = video.videoWidth, vh = video.videoHeight;
+  if (!vw || !vh) return null;
+  const a = analyzeFace(video, 200);
+  if (!a) return null;
+  const k = vw / a.w;                                   // 縮小フレーム → 実際の解像度
+  const s = Math.min(a.box.s * k, Math.min(vw, vh));
+  const sx = Math.max(0, Math.min(vw - s, a.box.cx*k - s/2));
+  const sy = Math.max(0, Math.min(vh - s, a.box.cy*k - s/2));
+  const out = document.createElement('canvas');
+  out.width = out.height = FACE_TEX_SIZE;
+  const oc = out.getContext('2d');
+  oc.imageSmoothingEnabled = true;
+  if ('imageSmoothingQuality' in oc) oc.imageSmoothingQuality = 'high';
+  oc.translate(FACE_TEX_SIZE, 0); oc.scale(-1, 1);      // 鏡像（プレビューと同じ向き）
+  oc.drawImage(video, sx, sy, s, s, 0, 0, FACE_TEX_SIZE, FACE_TEX_SIZE);
+  return { canvas: out, detected: a.box.ok };
+}
+
+const FaceCam = {
+  stream: null, pending: null, timer: null, stage: 'live',
+  el: function(id){ return document.getElementById(id); },
+  setStage: function(stage){
+    this.stage = stage;
+    const shot = (stage === 'shot');
+    this.el('camwrap').style.display = shot ? 'none' : 'block';
+    this.el('facepreview').style.display = shot ? 'block' : 'none';
+    this.el('shoot').style.display = shot ? 'none' : 'block';
+    this.el('faceok').style.display = shot ? 'block' : 'none';
+    this.el('faceretry').style.display = shot ? 'block' : 'none';
+  },
+  open: function(){
+    const self = this, msg = this.el('facemsg');
+    this.el('facepanel').style.display = 'flex';
+    this.setStage('live');
+    const md = navigator.mediaDevices;
+    if (!md || !md.getUserMedia){
+      msg.textContent = 'このブラウザ・この画面ではカメラを使えません。HTMLを保存してブラウザで直接開くと使えます。';
+      this.el('shoot').style.display = 'none';
+      return;
+    }
+    msg.textContent = 'カメラの使用を許可してください…';
+    md.getUserMedia({ video: { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false })
+      .then(function(st){
+        self.stream = st;
+        const v = self.el('cam');
+        v.srcObject = st;
+        const p = v.play();
+        if (p && p.catch) p.catch(function(){});
+        msg.textContent = '顔を映してください';
+        self.startWatch();
+      })
+      .catch(function(err){
+        const name = (err && err.name) ? err.name : 'エラー';
+        msg.textContent = 'カメラを開けませんでした（' + name + '）。'
+          + 'この埋め込み画面では許可されていないことがあります。HTMLをダウンロードして開いてみてください。';
+        self.el('shoot').style.display = 'none';
+      });
+  },
+  // 検出した顔の位置を映像に重ねて表示する
+  startWatch: function(){
+    const self = this;
+    this.stopWatch();
+    this.timer = setInterval(function(){ self.watch(); }, 220);
+  },
+  stopWatch: function(){ if (this.timer){ clearInterval(this.timer); this.timer = null; } },
+  watch: function(){
+    if (!this.stream || this.stage !== 'live') return;
+    const v = this.el('cam'), cv = this.el('camoverlay'), wrap = this.el('camwrap');
+    if (!v || !cv || !wrap || !v.videoWidth) return;
+    const cw = wrap.clientWidth, ch = wrap.clientHeight;
+    if (!cw || !ch) return;
+    if (cv.width !== cw || cv.height !== ch){ cv.width = cw; cv.height = ch; }
+    const c = cv.getContext('2d');
+    c.clearRect(0, 0, cw, ch);
+    const a = analyzeFace(v, 160);
+    if (!a) return;
+    const sc = Math.min(cw / v.videoWidth, ch / v.videoHeight);   // object-fit:contain と同じ計算
+    const ox = (cw - v.videoWidth*sc)/2, oy = (ch - v.videoHeight*sc)/2;
+    const k = (v.videoWidth / a.w) * sc;
+    const s = a.box.s * k;
+    c.lineWidth = 3;
+    c.strokeStyle = a.box.ok ? '#7fd6a6' : 'rgba(255,255,255,.35)';
+    c.strokeRect(ox + a.box.cx*k - s/2, oy + a.box.cy*k - s/2, s, s);
+    this.el('facemsg').textContent = a.box.ok
+      ? '顔を見つけました。この枠のまま切り取ります'
+      : '枠に顔が入るように近づいてください';
+  },
+  shoot: function(){
+    const res = captureFace(this.el('cam'));
+    if (!res){ this.el('facemsg').textContent = 'まだ映像が来ていません。少し待ってもう一度…'; return; }
+    this.pending = res.canvas.toDataURL('image/jpeg', 0.92);
+    const pv = this.el('facepreview'), c = pv.getContext('2d');
+    c.imageSmoothingEnabled = true;
+    c.clearRect(0, 0, FACE_TEX_SIZE, FACE_TEX_SIZE);
+    c.drawImage(res.canvas, 0, 0);
+    this.setStage('shot');
+    this.el('facemsg').textContent = res.detected
+      ? 'この顔をマイッキー全員に貼り付けます'
+      : '顔をうまく見つけられなかったので枠の位置で切りました。撮り直せます';
+  },
+  accept: function(){
+    if (!this.pending) return;
+    faceShot = this.pending;
+    applyFace(faceShot);
+    Store.dirty = true; Store.write();
+    this.close();
+    updateFaceButtons();
+    toast('みんなの顔が変わりました');
+  },
+  close: function(){
+    this.stopWatch();
+    if (this.stream){
+      const t = this.stream.getTracks ? this.stream.getTracks() : [];
+      for (let i = 0; i < t.length; i++) t[i].stop();
+      this.stream = null;
+    }
+    const v = this.el('cam');
+    if (v) v.srcObject = null;
+    this.pending = null;
+    this.el('facepanel').style.display = 'none';
+  }
+};
+
+function updateFaceButtons(){
+  const fb = document.getElementById('facebtn'), fc = document.getElementById('faceclear');
+  fb.style.display = 'block';
+  fb.textContent = faceShot ? '顔を撮り直す' : '仲間の顔を自分にする';
+  fc.style.display = faceShot ? 'block' : 'none';
+}
+document.getElementById('roombtn').addEventListener('click', function(){
+  const v = (document.getElementById('roomin').value || '').trim().toLowerCase();
+  if (!/^[a-z0-9]{3,12}$/.test(v)){ Net.setStatus('あいことばは英数字3〜12文字です'); return; }
+  Net.room = v; Net.saveRoom(); Net.setWanted(true); Net.connect();
+});
+document.getElementById('netoff').addEventListener('click', function(){
+  if (Net.on){ Net.setWanted(false); Net.stop(); this.textContent = 'みんなで遊ぶ'; }
+  else { Net.setWanted(true); Net.connect(); this.textContent = 'ひとりで遊ぶ'; }
+});
+document.getElementById('roomin').addEventListener('keydown', function(e){ e.stopPropagation(); });
+window.addEventListener('beforeunload', function(){ Net.disconnect(); });
+
+document.getElementById('facebtn').addEventListener('click', function(){ FaceCam.open(); });
+document.getElementById('shoot').addEventListener('click', function(){ FaceCam.shoot(); });
+document.getElementById('faceok').addEventListener('click', function(){ FaceCam.accept(); });
+document.getElementById('faceretry').addEventListener('click', function(){
+  FaceCam.setStage('live');
+  FaceCam.el('facemsg').textContent = '顔を映してください';
+  FaceCam.startWatch();
+});
+document.getElementById('facecancel').addEventListener('click', function(){ FaceCam.close(); });
+document.getElementById('faceclear').addEventListener('click', function(){
+  faceShot = null; restoreFace(); updateFaceButtons();
+  Store.dirty = true; Store.write();
+  toast('もとの顔にもどしました');
+});
+
+/* =========================================================
+   13. 入力
+   ========================================================= */
+const overlay = document.getElementById('overlay');
+let running = false;
+
+document.addEventListener('keydown', function(e){
+  if (e.code === 'Space' || e.code.indexOf('Arrow') === 0) e.preventDefault();
+  keys[e.code] = true;
+  if (!running) return;
+  if (e.code >= 'Digit0' && e.code <= 'Digit9'){
+    const d = parseInt(e.code.slice(5), 10);
+    selectSlot(d === 0 ? 9 : d - 1);
+  }
+  if (e.code === 'KeyF'){ player.thirdPerson = !player.thirdPerson; }
+  if (e.code === 'KeyV'){ talk(); }
+  if (e.code === 'KeyE'){ callMob('pig', e.shiftKey ? 10 : 1); }
+  if (e.code === 'KeyR'){ callMob('maikkii', e.shiftKey ? 10 : 1); }
+  if (e.code === 'KeyG'){ callMob('frog', e.shiftKey ? 10 : 1); }
+  if (e.code === 'KeyC'){ sendHome(); }
+  if (e.code === 'KeyK' || (e.code === 'KeyS' && (e.ctrlKey || e.metaKey))){
+    e.preventDefault();
+    if (Store.mode === 'none') toast('このブラウザでは保存できません');
+    else { Store.write(); toast('ワールドを保存しました'); }
+  }
+  if (e.code === 'KeyM'){ Snd.musicOn = !Snd.musicOn; toast(Snd.musicOn ? '音楽 オン' : '音楽 オフ'); }
+  if (e.code === 'KeyN'){ Snd.sfxOn = !Snd.sfxOn; toast(Snd.sfxOn ? '効果音 オン' : '効果音 オフ'); }
+});
+document.addEventListener('keyup', function(e){ keys[e.code] = false; });
+
+function toast(msg){
+  slotNameEl.textContent = msg;
+  slotNameEl.classList.add('show');
+  clearTimeout(selectSlot._t);
+  selectSlot._t = setTimeout(function(){ slotNameEl.classList.remove('show'); }, 1100);
+}
+
+canvas.addEventListener('mousedown', function(e){
+  if (!running) return;
+  if (document.pointerLockElement !== canvas){ lock(); return; }
+  if (e.button === 0) digBlock();
+  else if (e.button === 2) putBlock();
+  else if (e.button === 1){
+    const hit = raycast(6);
+    if (hit){
+      const i = HOTBAR.indexOf(hit.block);
+      if (i >= 0) selectSlot(i);
+    }
+  }
+});
+canvas.addEventListener('contextmenu', function(e){ e.preventDefault(); });
+document.addEventListener('mousemove', function(e){
+  if (document.pointerLockElement !== canvas) return;
+  player.yaw   -= e.movementX * 0.0022;
+  player.pitch -= e.movementY * 0.0022;
+  player.pitch = Math.max(-1.55, Math.min(1.55, player.pitch));
+});
+document.addEventListener('wheel', function(e){
+  if (!running) return;
+  const d = e.deltaY > 0 ? 1 : -1;
+  selectSlot((hotIndex + d + HOTBAR.length) % HOTBAR.length);
+}, { passive: true });
+document.addEventListener('pointerlockchange', function(){
+  if (running && document.pointerLockElement !== canvas && !isTouch) pause();
+});
+
+// --- タッチ操作 ---
+const isTouch = ('ontouchstart' in window) || navigator.maxTouchPoints > 0;
+if (isTouch) document.body.classList.add('is-touch');
+const touch = { active:false, x:0, y:0, jump:false, id:null, lookId:null, lx:0, ly:0 };
+const stick = document.getElementById('stick'), knob = stick.firstElementChild;
+
+stick.addEventListener('touchstart', function(e){
+  e.preventDefault();
+  const t = e.changedTouches[0];
+  touch.id = t.identifier; touch.active = true;
+  stickMove(t);
+}, { passive:false });
+stick.addEventListener('touchmove', function(e){
+  e.preventDefault();
+  for (let i = 0; i < e.changedTouches.length; i++)
+    if (e.changedTouches[i].identifier === touch.id) stickMove(e.changedTouches[i]);
+}, { passive:false });
+function stickEnd(e){
+  for (let i = 0; i < e.changedTouches.length; i++)
+    if (e.changedTouches[i].identifier === touch.id){
+      touch.active = false; touch.x = touch.y = 0; touch.id = null;
+      knob.style.transform = '';
+    }
+}
+stick.addEventListener('touchend', stickEnd);
+stick.addEventListener('touchcancel', stickEnd);
+function stickMove(t){
+  const r = stick.getBoundingClientRect();
+  let dx = t.clientX - (r.left + r.width/2);
+  let dy = t.clientY - (r.top + r.height/2);
+  const max = r.width/2 - 12, d = Math.hypot(dx, dy);
+  if (d > max){ dx *= max/d; dy *= max/d; }
+  touch.x = dx / max; touch.y = -dy / max;
+  knob.style.transform = 'translate(' + dx + 'px,' + dy + 'px)';
+}
+canvas.addEventListener('touchstart', function(e){
+  if (!running) return;
+  const t = e.changedTouches[0];
+  touch.lookId = t.identifier; touch.lx = t.clientX; touch.ly = t.clientY;
+}, { passive:true });
+canvas.addEventListener('touchmove', function(e){
+  if (!running) return;
+  for (let i = 0; i < e.changedTouches.length; i++){
+    const t = e.changedTouches[i];
+    if (t.identifier !== touch.lookId) continue;
+    player.yaw   -= (t.clientX - touch.lx) * 0.006;
+    player.pitch -= (t.clientY - touch.ly) * 0.006;
+    player.pitch = Math.max(-1.55, Math.min(1.55, player.pitch));
+    touch.lx = t.clientX; touch.ly = t.clientY;
+  }
+}, { passive:true });
+function bindBtn(id, down, up){
+  const el = document.getElementById(id);
+  el.addEventListener('touchstart', function(e){ e.preventDefault(); down(); }, { passive:false });
+  el.addEventListener('touchend', function(e){ e.preventDefault(); if (up) up(); }, { passive:false });
+  el.addEventListener('click', function(e){ e.preventDefault(); });
+}
+bindBtn('bJump', function(){ touch.jump = true; }, function(){ touch.jump = false; });
+bindBtn('bDig', function(){ digBlock(); });
+bindBtn('bPut', function(){ putBlock(); });
+
+/* =========================================================
+   14. 開始 / 一時停止
+   ========================================================= */
+function lock(){
+  try { if (!isTouch && document.pointerLockElement !== canvas) canvas.requestPointerLock(); }
+  catch(e){}
+}
+function start(){
+  FaceCam.close();
+  overlay.classList.add('hide');
+  document.getElementById('crosshair').style.display = 'block';
+  document.getElementById('stats').style.display = 'block';
+  document.getElementById('keys').style.display = isTouch ? 'none' : 'block';
+  hotbarEl.style.display = 'flex';
+  running = true;
+  Snd.init(); Snd.resume();
+  lock();
+  selectSlot(hotIndex);
+  setTimeout(function(){ talk('ハーイ！ マイッキー！'); }, 700);
+}
+function pause(){
+  running = false;
+  for (const k in keys) keys[k] = false;
+  Store.write();
+  overlay.classList.remove('hide');
+  document.getElementById('bar').style.display = 'none';
+  document.getElementById('loadtxt').textContent = '一時停止中';
+  document.getElementById('start').textContent = 'ゲームにもどる';
+  document.getElementById('start').style.display = 'block';
+  document.getElementById('reset').style.display = Store.mode === 'none' ? 'none' : 'block';
+  resetArmed = false;
+  document.getElementById('reset').textContent = '新しい島を作る';
+  updateFaceButtons();
+}
+
+// タブを閉じる・隠すときにも保存
+window.addEventListener('beforeunload', function(){ if (running) Store.write(); });
+document.addEventListener('visibilitychange', function(){ if (document.hidden && running) Store.write(); });
+document.getElementById('start').addEventListener('click', start);
+
+/* =========================================================
+   14-B. ネットワーク同期（MQTT over WebSocket）
+   ========================================================= */
+const NET_URL  = 'wss://public:public@public.cloud.shiftr.io/mqtt';
+const NET_ROOT = 'mkw';                       // トピックの先頭
+
+/* ---- 最小限の MQTT 3.1.1 クライアント（QoS0 のみ） ---- */
+const TE = (typeof TextEncoder !== 'undefined') ? new TextEncoder() : null;
+const TD = (typeof TextDecoder !== 'undefined') ? new TextDecoder() : null;
+function u8str(s){
+  if (TE) return TE.encode(s);
+  const a = []; for (let i = 0; i < s.length; i++) a.push(s.charCodeAt(i) & 255);
+  return new Uint8Array(a);
+}
+function strU8(u, from, to){
+  const b = u.subarray(from, to);
+  if (TD) return TD.decode(b);
+  let r = ''; for (let i = 0; i < b.length; i++) r += String.fromCharCode(b[i]);
+  return r;
+}
+function varLen(n){ const o = []; do { let d = n % 128; n = (n / 128) | 0; if (n > 0) d |= 128; o.push(d); } while (n > 0); return o; }
+
+function MqttClient(){
+  this.ws = null; this.buf = null; this.ready = false;
+  this.onmessage = null; this.onready = null; this.onclose = null;
+  this.ping = null;
+}
+MqttClient.prototype.open = function(url, clientId){
+  const self = this;
+  let user = '', pass = '';
+  const m = /^(wss?:\/\/)([^@\/]+)@(.+)$/.exec(url);   // URL の認証情報を取り出す
+  if (m){
+    const c = m[2].split(':');
+    user = decodeURIComponent(c[0] || ''); pass = decodeURIComponent(c[1] || '');
+    url = m[1] + m[3];                                    // WebSocket は URL に認証情報を持てない
+  }
+  let ws;
+  try { ws = new WebSocket(url, 'mqtt'); } catch(e){ if (this.onclose) this.onclose('URLエラー'); return; }
+  ws.binaryType = 'arraybuffer';
+  this.ws = ws;
+  ws.onopen = function(){ self._connect(clientId, user, pass); };
+  ws.onmessage = function(ev){ self._data(new Uint8Array(ev.data)); };
+  ws.onerror = function(){};
+  ws.onclose = function(){
+    self.ready = false;
+    if (self.ping){ clearInterval(self.ping); self.ping = null; }
+    if (self.onclose) self.onclose('切断');
+  };
+};
+MqttClient.prototype.close = function(){
+  if (this.ping){ clearInterval(this.ping); this.ping = null; }
+  if (this.ws){ try { this.ws.close(); } catch(e){} this.ws = null; }
+  this.ready = false;
+};
+MqttClient.prototype.buffered = function(){ return this.ws ? (this.ws.bufferedAmount || 0) : 0; };
+MqttClient.prototype._send = function(u8){
+  if (this.ws && this.ws.readyState === 1){ try { this.ws.send(u8); } catch(e){} }
+};
+MqttClient.prototype._connect = function(clientId, user, pass){
+  const id = u8str(clientId), un = u8str(user), pw = u8str(pass);
+  let rem = 10 + 2 + id.length;
+  let flags = 0x02;                                        // clean session
+  if (user){ flags |= 0x80; rem += 2 + un.length; }
+  if (pass){ flags |= 0x40; rem += 2 + pw.length; }
+  const lb = varLen(rem);
+  const b = new Uint8Array(1 + lb.length + rem);
+  let p = 0;
+  b[p++] = 0x10;
+  for (let i = 0; i < lb.length; i++) b[p++] = lb[i];
+  b[p++] = 0; b[p++] = 4; b[p++] = 77; b[p++] = 81; b[p++] = 84; b[p++] = 84;   // "MQTT"
+  b[p++] = 4;                                              // プロトコル 3.1.1
+  b[p++] = flags;
+  b[p++] = 0; b[p++] = 30;                                 // キープアライブ30秒
+  b[p++] = id.length >> 8; b[p++] = id.length & 255; b.set(id, p); p += id.length;
+  if (user){ b[p++] = un.length >> 8; b[p++] = un.length & 255; b.set(un, p); p += un.length; }
+  if (pass){ b[p++] = pw.length >> 8; b[p++] = pw.length & 255; b.set(pw, p); p += pw.length; }
+  this._send(b);
+  const self = this;
+  this.ping = setInterval(function(){ self._send(new Uint8Array([0xC0, 0x00])); }, 20000);
+};
+MqttClient.prototype.subscribe = function(filter){
+  const t = u8str(filter);
+  const rem = 2 + 2 + t.length + 1;
+  const lb = varLen(rem);
+  const b = new Uint8Array(1 + lb.length + rem);
+  let p = 0;
+  b[p++] = 0x82;
+  for (let i = 0; i < lb.length; i++) b[p++] = lb[i];
+  b[p++] = 0; b[p++] = 1;
+  b[p++] = t.length >> 8; b[p++] = t.length & 255; b.set(t, p); p += t.length;
+  b[p++] = 0;
+  this._send(b);
+};
+MqttClient.prototype.publish = function(topic, payload){
+  if (!this.ready) return;
+  const t = u8str(topic);
+  const rem = 2 + t.length + payload.length;
+  const lb = varLen(rem);
+  const b = new Uint8Array(1 + lb.length + rem);
+  let p = 0;
+  b[p++] = 0x30;
+  for (let i = 0; i < lb.length; i++) b[p++] = lb[i];
+  b[p++] = t.length >> 8; b[p++] = t.length & 255; b.set(t, p); p += t.length;
+  b.set(payload, p);
+  this._send(b);
+};
+MqttClient.prototype._data = function(chunk){
+  if (this.buf && this.buf.length){
+    const n = new Uint8Array(this.buf.length + chunk.length);
+    n.set(this.buf, 0); n.set(chunk, this.buf.length); this.buf = n;
+  } else this.buf = chunk;
+  for (;;){
+    const b = this.buf;
+    if (b.length < 2) break;
+    let mult = 1, len = 0, i = 1, digit;
+    do {
+      if (i >= b.length) return;                            // 長さが未着
+      digit = b[i++];
+      len += (digit & 127) * mult;
+      mult *= 128;
+    } while (digit & 128);
+    if (b.length < i + len) break;                          // 本体が未着
+    const body = b.subarray(i, i + len);
+    this.buf = b.subarray(i + len);                         // 先に進めてから処理する
+    this._packet(b[0], body);                               // （処理中に次が届いても崩れない）
+  }
+};
+MqttClient.prototype._packet = function(head, body){
+  const type = head >> 4;
+  if (type === 2){                                          // CONNACK
+    if (body.length >= 2 && body[1] === 0){
+      if (this.ready) return;                               // すでに接続済みなら何もしない
+      this.ready = true;
+      if (this.onready) this.onready();
+    } else if (this.onclose) this.onclose('接続を拒否されました');
+  } else if (type === 3){                                   // PUBLISH
+    const tl = (body[0] << 8) | body[1];
+    const topic = strU8(body, 2, 2 + tl);
+    let p = 2 + tl;
+    if (((head >> 1) & 3) > 0) p += 2;                      // QoS>0 のときはパケットID
+    if (this.onmessage) this.onmessage(topic, body.subarray(p));
+  }
+};
+
+/* ---- ニックネーム ---- */
+const NICK_A = ['あかい','あおい','きいろい','みどりの','しろい','くろい','ちいさな','おおきな',
+                'はやい','ゆかいな','げんきな','しずかな','ねむい','つよい','やさしい','ふしぎな'];
+const NICK_B = ['マイッキー','ブタ','カエル','ブロック','つるはし','たいよう','おつきさま','いし',
+                'こだま','なみ','くも','たね','ほし','かぜ','はっぱ','どんぐり'];
+function makeNick(){
+  return NICK_A[(Math.random()*NICK_A.length)|0] + NICK_B[(Math.random()*NICK_B.length)|0]
+       + (1 + ((Math.random()*99)|0));
+}
+function makeRoom(){
+  const c = 'abcdefghjkmnpqrstuvwxyz23456789';
+  let r = '';
+  for (let i = 0; i < 5; i++) r += c[(Math.random()*c.length)|0];
+  return r;
+}
+
+/* ---- 名前の吹き出し（常にこちらを向く） ---- */
+function nameSprite(text){
+  const cv = document.createElement('canvas');
+  let c = cv.getContext('2d');
+  const font = 'bold 40px "Hiragino Kaku Gothic ProN","Yu Gothic",Meiryo,sans-serif';
+  c.font = font;
+  const w = Math.min(560, Math.ceil(c.measureText(text).width) + 40);
+  cv.width = Math.max(96, w); cv.height = 64;
+  c = cv.getContext('2d');
+  c.font = font; c.textAlign = 'center'; c.textBaseline = 'middle';
+  c.fillStyle = 'rgba(20,19,38,0.82)'; c.fillRect(0, 8, cv.width, 48);
+  c.strokeStyle = '#f6f1e4'; c.lineWidth = 3; c.strokeRect(1.5, 9.5, cv.width - 3, 45);
+  c.fillStyle = '#f6f1e4'; c.fillText(text, cv.width / 2, 33);
+  const tex = new THREE.CanvasTexture(cv);
+  const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: true }));
+  sp.userData.ratio = cv.width / 64;
+  sp.scale.set(sp.userData.ratio * 0.62, 0.62, 1);
+  return sp;
+}
+
+/* ---- 同期本体 ---- */
+const Net = {
+  on: false, up: false, status: 'オフライン',
+  client: null, room: '', id: 0, nick: '', since: 0,
+  peers: {}, host: 0, adopted: false, waitWorld: 0,
+  editQ: new Map(), lo: [], stateAcc: 0, editAcc: 0, loAcc: 0, seq: 0,
+  snap: null, sent: 0, recv: 0, applyQ: [],
+
+  init: function(){
+    try { this.nick = window.localStorage.getItem('maikkii-nick') || ''; } catch(e){}
+    if (!this.nick){
+      this.nick = makeNick();
+      try { window.localStorage.setItem('maikkii-nick', this.nick); } catch(e){}
+    }
+    const h = (location.hash || '').replace(/^#/, '').trim();
+    let saved = '';
+    try { saved = window.localStorage.getItem('maikkii-room') || ''; } catch(e){}
+    this.room = (/^[a-z0-9]{3,12}$/i.test(h) ? h : (saved || makeRoom())).toLowerCase();
+    this.id = (Math.random() * 0x7fffffff) | 0;
+    this.since = Date.now();
+    this.saveRoom();
+  },
+  wanted: function(){
+    try { return window.localStorage.getItem('maikkii-net') !== 'off'; } catch(e){ return true; }
+  },
+  setWanted: function(v){
+    try { window.localStorage.setItem('maikkii-net', v ? 'on' : 'off'); } catch(e){}
+  },
+  saveRoom: function(){
+    try { window.localStorage.setItem('maikkii-room', this.room); } catch(e){}
+    try { if (location.hash.replace(/^#/, '') !== this.room) location.hash = this.room; } catch(e){}
+  },
+  topic: function(sub){ return NET_ROOT + '/' + this.room + '/' + sub; },
+
+  connect: function(){
+    if (!window.WebSocket){ this.setStatus('このブラウザでは同期できません'); return; }
+    this.disconnect();
+    this.on = true; this.adopted = false; this.waitWorld = 0;
+    this.setStatus('接続中…');
+    const self = this;
+    const c = this.client = new MqttClient();
+    c.onready = function(){
+      self.up = true;
+      c.subscribe(self.topic('#'));
+      self.setStatus('つながりました');
+      self.publishJson('j', { t: 'hi', id: self.id, nick: self.nick, since: self.since });
+      self.waitWorld = 3.5;                                  // 誰かが世界をくれるのを待つ
+    };
+    c.onclose = function(msg){
+      self.up = false;
+      if (self.on){
+        self.setStatus(msg + '（再接続します）');
+        clearTimeout(self._retry);
+        self._retry = setTimeout(function(){ if (self.on) self.connect(); }, 4000);
+      } else self.setStatus('オフライン');
+      self.clearPeers();
+    };
+    c.onmessage = function(topic, payload){ self.onMessage(topic, payload); };
+    c.open(NET_URL, 'mkw-' + this.id.toString(36) + '-' + ((Math.random()*1e6)|0).toString(36));
+  },
+  disconnect: function(){
+    clearTimeout(this._retry);
+    if (this.client){
+      if (this.up) this.publishJson('j', { t: 'bye', id: this.id });
+      this.client.close();
+    }
+    this.client = null; this.up = false;
+    this.clearPeers();
+  },
+  stop: function(){ this.on = false; this.disconnect(); this.setStatus('オフライン'); },
+
+  setStatus: function(s){
+    this.status = s;
+    const el = document.getElementById('netstat');
+    if (el) el.textContent = s;
+    const el2 = document.getElementById('netline');
+    if (el2) el2.textContent = this.on ? (s + '　あいことば ' + this.room) : 'オフライン';
+  },
+
+  publishJson: function(sub, obj){
+    if (!this.up) return;
+    const b = u8str(JSON.stringify(obj));
+    const p = new Uint8Array(b.length + 1);
+    p[0] = 9; p.set(b, 1);
+    this.client.publish(this.topic(sub), p);
+    this.sent += p.length;
+  },
+
+  /* ---- 送信（優先度つき） ---- */
+  queueEdit: function(i, v){
+    if (!this.on) return;
+    this.editQ.set(i, v);                                    // 同じ場所は最新だけ残す
+  },
+  publishState: function(){
+    if (!this.up) return;
+    const b = new Uint8Array(15);
+    const dv = new DataView(b.buffer);
+    b[0] = 1;
+    dv.setUint16(1, (this.seq = (this.seq + 1) & 0xffff));
+    dv.setInt16(3, Math.round(player.x * 32));
+    dv.setInt16(5, Math.round(player.y * 32));
+    dv.setInt16(7, Math.round(player.z * 32));
+    let yw = player.yaw % (Math.PI*2);
+    if (yw > Math.PI) yw -= Math.PI*2; else if (yw < -Math.PI) yw += Math.PI*2;
+    dv.setInt16(9, Math.round(yw * 5000));
+    b[11] = Math.max(0, Math.min(255, Math.round((player.pitch + 2) * 60)));
+    b[12] = (player.onGround ? 1 : 0) | (player.inWater ? 2 : 0) | (player.swing > 0.4 ? 4 : 0);
+    b[13] = Math.max(0, Math.min(255, Math.round(player.vx * 8 + 128)));
+    b[14] = Math.max(0, Math.min(255, Math.round(player.vz * 8 + 128)));
+    this.client.publish(this.topic('p/' + this.id), b);
+    this.sent += b.length;
+  },
+  flushEdits: function(){
+    if (!this.up || !this.editQ.size) return;
+    const list = [];
+    this.editQ.forEach(function(v, i){ list.push(i, v); });
+    this.editQ.clear();
+    for (let s = 0; s < list.length; s += 500){              // 1通あたり250マスまで
+      const n = Math.min(250, (list.length - s) / 2);
+      const b = new Uint8Array(3 + n*4);
+      b[0] = 2; b[1] = n >> 8; b[2] = n & 255;
+      for (let k = 0; k < n; k++){
+        const i = list[s + k*2], v = list[s + k*2 + 1], p = 3 + k*4;
+        b[p] = i & 255; b[p+1] = (i >> 8) & 255; b[p+2] = (i >> 16) & 255; b[p+3] = v;
+      }
+      this.client.publish(this.topic('b'), b);
+      this.sent += b.length;
+    }
+  },
+  // 世界まるごと（低優先度でこま切れに送る）
+  sendWorld: function(to){
+    if (!this.up) return;
+    const bytes = editsToBytes();
+    this.publishJson('w', { t: 'world', id: this.id, to: to, seed: SEED,
+                            time: Math.round(time), n: bytes.length,
+                            vx: Village.x, vy: Village.y, vz: Village.z,
+                            vk: Village.kind, vw: Village.w });
+    const CH = 5000;
+    const total = Math.max(1, Math.ceil(bytes.length / CH));
+    for (let k = 0; k < total; k++){
+      const part = bytes.subarray(k*CH, Math.min(bytes.length, (k+1)*CH));
+      const b = new Uint8Array(9 + part.length);
+      b[0] = 3;
+      b[1] = (to >>> 24) & 255; b[2] = (to >>> 16) & 255; b[3] = (to >>> 8) & 255; b[4] = to & 255;
+      b[5] = k >> 8; b[6] = k & 255; b[7] = total >> 8; b[8] = total & 255;
+      b.set(part, 9);
+      this.lo.push([this.topic('s'), b]);
+    }
+  },
+
+  pump: function(dt){
+    if (!this.up) return;
+    const buf = this.client.buffered();
+    // 詰まってきたら自分の位置は間引き、世界の配布は止める
+    const rate = buf > 131072 ? 0.30 : buf > 32768 ? 0.16 : 0.083;
+    this.stateAcc += dt;
+    if (this.stateAcc >= rate){ this.stateAcc = 0; this.publishState(); }
+    this.editAcc += dt;
+    if (this.editAcc >= 0.12){ this.editAcc = 0; this.flushEdits(); }
+    if (this.lo.length && buf < 16384){
+      this.loAcc += dt;
+      if (this.loAcc >= 0.04){
+        this.loAcc = 0;
+        const m = this.lo.shift();
+        this.client.publish(m[0], m[1]);
+        this.sent += m[1].length;
+      }
+    }
+    // 届いたブロック変更は1フレームあたりの量を決めて反映する
+    let budget = 400;
+    while (this.applyQ.length && budget > 0){
+      const e = this.applyQ.shift();
+      editBlock(e[0], e[1], e[2], e[3], true);
+      markDirty(e[0], e[2]);
+      budget--;
+    }
+    if (this.waitWorld > 0){
+      this.waitWorld -= dt;
+      if (this.waitWorld <= 0 && !this.adopted) this.setStatus('この世界のホストになりました');
+    }
+  },
+
+  /* ---- 受信 ---- */
+  onMessage: function(topic, p){
+    this.recv += p.length;
+    const kind = topic.slice(topic.lastIndexOf('/') + 1);
+    const type = p[0];
+    if (type === 9){                                        // JSON
+      let o; try { o = JSON.parse(strU8(p, 1, p.length)); } catch(e){ return; }
+      if (!o || o.id === this.id) return;
+      if (o.t === 'hi'){
+        this.addPeer(o);
+        this.publishJson('j', { t: 'me', id: this.id, nick: this.nick, since: this.since });
+        if (this.isHost()) this.sendWorld(o.id);            // 先にいた人が世界を渡す
+      } else if (o.t === 'me'){
+        this.addPeer(o);
+      } else if (o.t === 'bye'){
+        this.removePeer(o.id);
+      } else if (o.t === 'world'){
+        if (o.to === this.id) this.beginAdopt(o);
+      }
+      return;
+    }
+    if (type === 1){                                        // 相手の位置
+      const pid = parseInt(kind, 10);
+      if (!pid || pid === this.id) return;
+      this.onState(pid, p);
+      return;
+    }
+    if (type === 2){                                        // ブロックの変更
+      const n = (p[1] << 8) | p[2];
+      for (let k = 0; k < n; k++){
+        const q = 3 + k*4;
+        const i = p[q] | (p[q+1] << 8) | (p[q+2] << 16), v = p[q+3];
+        const x = (i / (WZ*WY)) | 0, r = i % (WZ*WY);
+        this.applyQ.push([x, r % WY, (r / WY) | 0, v]);
+      }
+      return;
+    }
+    if (type === 3){                                        // 世界のかたまり
+      const to = (p[1] << 24) | (p[2] << 16) | (p[3] << 8) | p[4];
+      if (to !== this.id || !this.snap) return;
+      const k = (p[5] << 8) | p[6], total = (p[7] << 8) | p[8];
+      this.snap.parts[k] = p.subarray(9);
+      this.snap.got++;
+      this.setStatus('世界を受け取り中 ' + Math.round(this.snap.got / total * 100) + '%');
+      if (this.snap.got >= total) this.finishAdopt();
+      return;
+    }
+  },
+
+  onState: function(id, p){
+    let q = this.peers[id];
+    if (!q){ q = this.addPeer({ id: id, nick: 'だれか', since: Date.now() }); }
+    const dv = new DataView(p.buffer, p.byteOffset, p.byteLength);
+    q.tx = dv.getInt16(3) / 32; q.ty = dv.getInt16(5) / 32; q.tz = dv.getInt16(7) / 32;
+    q.tyaw = dv.getInt16(9) / 5000;
+    q.pitch = p[11] / 60 - 2;
+    q.flags = p[12];
+    q.vx = (p[13] - 128) / 8; q.vz = (p[14] - 128) / 8;
+    q.last = performance.now();
+    if (!q.seen){                                            // 初回は瞬間移動で置く
+      q.seen = true; q.x = q.tx; q.y = q.ty; q.z = q.tz; q.yaw = q.tyaw;
+      q.model.visible = true;
+    }
+  },
+
+  /* ---- 参加者の管理 ---- */
+  isHost: function(){
+    for (const k in this.peers){
+      const q = this.peers[k];
+      if (q.since < this.since || (q.since === this.since && q.id < this.id)) return false;
+    }
+    return true;
+  },
+  addPeer: function(o){
+    let q = this.peers[o.id];
+    if (!q){
+      const shirt = SHIRTS[Math.abs(o.id) % SHIRTS.length];
+      const model = makeMaikkii(shirt);
+      freezeMatrices(model);
+      model.visible = false;
+      scene.add(model);
+      const tag = nameSprite(o.nick || 'だれか');
+      tag.position.y = 2.15;
+      model.add(tag);
+      q = { id: o.id, nick: o.nick, since: o.since || Date.now(), model: model, tag: tag,
+            x: 0, y: 0, z: 0, yaw: 0, tx: 0, ty: 0, tz: 0, tyaw: 0, pitch: 0,
+            vx: 0, vz: 0, flags: 0, seen: false, last: performance.now(), phase: 0 };
+      this.peers[o.id] = q;
+      this.updatePanel();
+    } else if (o.nick && o.nick !== q.nick){
+      q.nick = o.nick;
+      q.model.remove(q.tag);
+      q.tag = nameSprite(o.nick); q.tag.position.y = 2.15; q.model.add(q.tag);
+      this.updatePanel();
+    }
+    if (o.since) q.since = o.since;
+    return q;
+  },
+  removePeer: function(id){
+    const q = this.peers[id];
+    if (!q) return;
+    scene.remove(q.model);
+    delete this.peers[id];
+    this.updatePanel();
+  },
+  clearPeers: function(){
+    for (const k in this.peers) scene.remove(this.peers[k].model);
+    this.peers = {};
+    this.updatePanel();
+  },
+  updatePanel: function(){
+    const el = document.getElementById('netpeers');
+    if (!el) return;
+    const names = [];
+    for (const k in this.peers) names.push(this.peers[k].nick);
+    el.textContent = names.length ? (names.length + '人：' + names.join('、')) : 'ひとり';
+  },
+
+  // 動きをなめらかに見せる（受信は毎秒12回なので補間する）
+  updateAvatars: function(dt){
+    const now = performance.now();
+    for (const k in this.peers){
+      const q = this.peers[k];
+      if (!q.seen) continue;
+      if (now - q.last > 12000){ this.removePeer(q.id); continue; }
+      const dead = Math.min(0.35, (now - q.last) / 1000);
+      const px = q.tx + q.vx * dead, pz = q.tz + q.vz * dead;   // 少し先を予測する
+      const k2 = Math.min(1, dt * 11);
+      q.x += (px - q.x) * k2; q.y += (q.ty - q.y) * k2; q.z += (pz - q.z) * k2;
+      let d = q.tyaw - q.yaw;
+      while (d > Math.PI) d -= Math.PI*2;
+      while (d < -Math.PI) d += Math.PI*2;
+      q.yaw += d * Math.min(1, dt * 12);
+      const m = q.model;
+      m.position.set(q.x, q.y, q.z);
+      m.rotation.y = q.yaw + Math.PI;
+      m.updateMatrix();
+      const sp = Math.hypot(q.vx, q.vz);
+      animateHumanoid(m, sp, dt, { pitch: q.pitch, airborne: !(q.flags & 1) && !(q.flags & 2),
+                                   swing: (q.flags & 4) ? 1 : 0 });
+      const dist = Math.hypot(q.x - player.x, q.z - player.z);
+      q.tag.visible = dist < 70;
+      const s = 0.62 * Math.max(1, Math.min(3.2, dist / 12));   // 遠くても読める大きさに
+      q.tag.scale.set(q.tag.userData.ratio * s, s, 1);
+      q.tag.updateMatrix ? q.tag.updateMatrix() : 0;
+    }
+  },
+
+  /* ---- 世界の受け取り ---- */
+  beginAdopt: function(o){
+    if (this.adopted) return;
+    this.waitWorld = 0;
+    this.snap = { parts: [], got: 0, meta: o };
+    this.setStatus('世界を受け取り中…');
+    if (!o.n){ this.finishAdopt(); }
+  },
+  finishAdopt: function(){
+    const s = this.snap, o = s ? s.meta : null;
+    this.snap = null;
+    if (!o) return;
+    this.adopted = true;
+    let bytes = new Uint8Array(0);
+    if (s.parts.length){
+      let len = 0;
+      for (let i = 0; i < s.parts.length; i++) if (s.parts[i]) len += s.parts[i].length;
+      bytes = new Uint8Array(len);
+      let p = 0;
+      for (let i = 0; i < s.parts.length; i++){
+        if (!s.parts[i]) continue;
+        bytes.set(s.parts[i], p); p += s.parts[i].length;
+      }
+    }
+    SEED = o.seed | 0;
+    blocks.fill(AIR);
+    generateWorld();
+    edits.clear(); editsB64 = null;
+    const n = applyEditBytes(bytes);
+    if (isFinite(o.time)) time = o.time;
+    clearMobs();
+    if (!running) spawn();
+    populate();
+    updateMobCount(); scanWater();
+    Village.tasks.length = 0; Village.ready = false;
+    if (isFinite(o.vx)){
+      Village.x = o.vx|0; Village.y = o.vy|0; Village.z = o.vz|0;
+      Village.kind = (o.vk === 'tower') ? 'tower' : 'hut';
+      Village.w = Village.d = Math.max(3, Math.min(9, o.vw|0));
+      Village.makeTasks(); Village.ready = true;
+    } else Village.start(player.x, player.z);
+    Store.dirty = true;
+    this.setStatus('世界を同期しました（' + n + 'マス）');
+    startMeshing(function(){ toast('みんなの世界に合流しました'); });
+  }
+};
+
+/* =========================================================
+   15. 昼夜サイクルと描画ループ
+   ========================================================= */
+const DAY = 300;              // 1日の長さ（秒）
+let time = DAY * 0.28;        // 朝から開始
+const skyDay = new THREE.Color(0x8fc6e8);
+const skyDusk = new THREE.Color(0xf09a5c);
+const skyNight = new THREE.Color(0x0d1230);
+const tmpColor = new THREE.Color();
+
+function updateSky(dt){
+  time = (time + dt) % DAY;
+  const a = time / DAY * Math.PI * 2;
+  const sunY = Math.sin(a - Math.PI/2);
+  const sunX = Math.cos(a - Math.PI/2);
+
+  sun.position.set(player.x + sunX*120, sunY*140, player.z + 60);
+  sunMesh.position.set(player.x + sunX*200, sunY*230, player.z + 100);
+  moonMesh.position.set(player.x - sunX*200, -sunY*230, player.z + 100);
+
+  const day = Math.max(0, Math.min(1, sunY*2 + 0.35));
+  const dusk = Math.max(0, 1 - Math.abs(sunY)*3.2);
+  tmpColor.copy(skyNight).lerp(skyDay, day).lerp(skyDusk, dusk*0.6);
+  renderer.setClearColor(tmpColor);
+  scene.fog.color.copy(tmpColor);
+  sun.intensity = 0.15 + day*0.8;
+  hemi.intensity = 0.25 + day*0.6;
+  ambient.intensity = 0.16 + day*0.2;
+  starMat.opacity = Math.max(0, 1 - day*2.2);
+  stars.position.set(player.x, 0, player.z);
+  sunMesh.visible = sunY > -0.2;
+  moonMesh.visible = sunY < 0.2;
+}
+
+function updateCamera(){
+  camera.rotation.order = 'YXZ';
+  camera.rotation.y = player.yaw;
+  camera.rotation.x = player.pitch;
+  camera.rotation.z = 0;
+  const ex = player.x, ey = player.y + EYE, ez = player.z;
+  if (player.thirdPerson){
+    const dx = -Math.sin(player.yaw)*Math.cos(player.pitch);
+    const dy =  Math.sin(player.pitch);
+    const dz = -Math.cos(player.yaw)*Math.cos(player.pitch);
+    let dist = 4.2;
+    for (let s = 0.4; s < dist; s += 0.25){
+      if (isSolid(getBlock(Math.floor(ex - dx*s), Math.floor(ey - dy*s), Math.floor(ez - dz*s)))){
+        dist = Math.max(0.9, s - 0.3); break;
+      }
+    }
+    camera.position.set(ex - dx*dist, ey - dy*dist + 0.25, ez - dz*dist);
+  } else {
+    camera.position.set(ex, ey, ez);
+  }
+  maikkii.visible = player.thirdPerson;
+  held.visible = !player.thirdPerson;
+  handArm.visible = !player.thirdPerson;
+  // 水中の色味
+  const head = getBlock(Math.floor(ex), Math.floor(ey), Math.floor(ez));
+  if (head === WATER){ scene.fog.near = 0.1; scene.fog.far = 16; }
+  else { scene.fog.near = 42; scene.fog.far = 118; }
+}
+
+const posEl = document.getElementById('pos');
+const villageEl = document.getElementById('village');
+const clockEl = document.getElementById('clock');
+const fpsEl = document.getElementById('fps');
+let last = performance.now(), acc = 0, frames = 0, fps = 0;
+
+function loop(now){
+  requestAnimationFrame(loop);
+  let dt = (now - last) / 1000; last = now;
+  if (dt > 0.1) dt = 0.1;
+  frames++; acc += dt;
+  if (acc >= 0.5){ fps = Math.round(frames/acc); frames = 0; acc = 0; fpsEl.textContent = fps; }
+
+  if (running){
+    updatePlayer(dt);
+    updateMobs(dt);
+    Store.tick(dt);
+    if (clearArmed > 0) clearArmed -= dt;
+    // 手の振り
+    if (player.swing > 0) player.swing = Math.max(0, player.swing - dt*4);
+    const sw = Math.sin(player.swing * Math.PI) * 0.7;
+    held.rotation.x = 0.2 - sw;
+    held.position.y = -0.34 - sw*0.12;
+    handArm.rotation.x = -sw;
+
+    const hit = mobUnderCrosshair(5) ? null : raycast(6);
+    if (hit){ highlight.visible = true; highlight.position.set(hit.x+0.5, hit.y+0.5, hit.z+0.5); }
+    else highlight.visible = false;
+
+    flushDirty();
+    if ((frames & 15) === 0){
+      const left = Village.ready ? (Village.tasks.length - Village.done) : 0;
+      villageEl.textContent = Village.ready
+        ? (Village.kind === 'tower' ? '塔' : '家') + ' あと' + left + '　働く人 ' + Village.workers
+        : '休けい中';
+    }
+    posEl.textContent = Math.floor(player.x) + ', ' + Math.floor(player.y) + ', ' + Math.floor(player.z);
+    const hh = Math.floor(time / DAY * 24), mm = Math.floor((time / DAY * 24 % 1) * 60);
+    clockEl.textContent = hh + ':' + (mm < 10 ? '0' : '') + mm;
+  }
+
+  Net.pump(dt);
+  Net.updateAvatars(dt);
+
+  updateSky(dt);
+  clouds.children.forEach(function(c){
+    c.position.x += dt * 0.7;
+    if (c.position.x > WX*1.4) c.position.x = -WX*0.4;
+  });
+  updateCamera();
+  renderer.render(scene, camera);
+}
+
+window.addEventListener('resize', function(){
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+});
+
+/* =========================================================
+   16. 読み込みシーケンス
+   ========================================================= */
+const barFill = document.querySelector('#bar div');
+const loadTxt = document.getElementById('loadtxt');
+const startBtn = document.getElementById('start');
+const resetBtn = document.getElementById('reset');
+const barEl = document.getElementById('bar');
+let resetArmed = false;
+
+let ci = 0, meshDone = null;
+const total = CX * CZ;
+function buildStep(){
+  const t0 = performance.now();
+  while (ci < total && performance.now() - t0 < 14){
+    buildChunk((ci / CZ) | 0, ci % CZ);
+    ci++;
+  }
+  barFill.style.width = (ci/total*100) + '%';
+  if (ci < total){
+    loadTxt.textContent = '地形をつくっています… ' + Math.floor(ci/total*100) + '%';
+    requestAnimationFrame(buildStep);
+  } else {
+    barEl.style.display = 'none';
+    if (meshDone){ const f = meshDone; meshDone = null; f(); }
+  }
+}
+function startMeshing(done){
+  ci = 0; meshDone = done;
+  barEl.style.display = 'block';
+  barFill.style.width = '0%';
+  requestAnimationFrame(buildStep);
+}
+
+// 保存データを読んでから世界を組み立てる
+function boot(){
+  buildHotbar();
+  Net.init();
+  loadTxt.textContent = '保存データを探しています…';
+  Store.read().then(function(save){
+    const ok = !!(save && save.v === 1 && save.wx === WX && save.wy === WY && save.wz === WZ
+                  && isFinite(save.seed));
+    if (ok) SEED = save.seed | 0;
+    generateWorld();
+
+    let restored = 0;
+    if (ok){
+      restored = decodeEdits(save.e);
+      const p = save.p || {};
+      if (isFinite(p.x) && isFinite(p.y) && isFinite(p.z)){
+        player.x = Math.max(1.4, Math.min(WX - 1.4, p.x));
+        player.y = Math.max(0, Math.min(WY - 2, p.y));
+        player.z = Math.max(1.4, Math.min(WZ - 1.4, p.z));
+        player.yaw = isFinite(p.yaw) ? p.yaw : 0;
+        player.pitch = Math.max(-1.55, Math.min(1.55, isFinite(p.pitch) ? p.pitch : 0));
+        player.broke = p.broke | 0;
+        player.thirdPerson = !!p.third;
+        hotIndex = Math.max(0, Math.min(HOTBAR.length - 1, p.slot | 0));
+      } else spawn();
+      if (isFinite(save.t)) time = save.t;
+      if (typeof save.f === 'string' && save.f.indexOf('data:image') === 0){
+        faceShot = save.f; applyFace(faceShot);
+      }
+      restoreMobs(save.m);
+      document.getElementById('broke').textContent = player.broke;
+      const v = save.vg;
+      if (v && isFinite(v.x) && isFinite(v.y) && isFinite(v.z)){
+        Village.x = v.x|0; Village.y = v.y|0; Village.z = v.z|0;
+        Village.kind = (v.k === 'tower') ? 'tower' : 'hut';
+        Village.w = Village.d = Math.max(3, Math.min(9, v.w|0));
+        Village.makeTasks();               // 済んだ部分は自動的に対象から外れる
+        Village.ready = true;
+      } else Village.start(player.x, player.z);
+    } else {
+      spawn();
+      populate();
+      Village.start(player.x, player.z);
+    }
+
+    updateMobCount();
+    Store.px = player.x; Store.pz = player.z;
+    if (Store.mode === 'none') Store.stamp('保存できません');
+    else Store.stamp(ok ? '前回の続き' : '新しい島');
+
+    startMeshing(function(){
+      loadTxt.textContent = ok
+        ? '前回の続きから（手を加えたブロック ' + restored + '個）'
+        : 'マイッキーの島ができました（住人 ' + MOBS.length + '人）';
+      startBtn.textContent = ok ? '続きから遊ぶ' : 'ぼうけんをはじめる';
+      startBtn.style.display = 'block';
+      document.getElementById('howto').style.display = 'block';
+      resetBtn.style.display = Store.mode === 'none' ? 'none' : 'block';
+      updateFaceButtons();
+      document.getElementById('netbox').style.display = 'block';
+      document.getElementById('roomin').value = Net.room;
+      document.getElementById('mynick').textContent = Net.nick;
+      if (Net.wanted()) Net.connect(); else Net.setStatus('オフライン');
+    });
+  });
+}
+
+// 島を作り直す（保存データも消す）
+function newWorld(){
+  Store.clear();
+  SEED = (Math.random() * 2000000000) | 0;
+  blocks.fill(AIR);
+  generateWorld();
+  clearMobs();
+  Village.tasks.length = 0; Village.ready = false;
+  spawn(); populate(); updateMobCount();
+  Village.start(player.x, player.z);
+  player.vx = player.vy = player.vz = 0;
+  player.broke = 0; player.pitch = 0; hotIndex = 0;
+  document.getElementById('broke').textContent = 0;
+  time = DAY * 0.28;
+  running = false;
+  overlay.classList.remove('hide');
+  startBtn.style.display = 'none';
+  resetBtn.style.display = 'none';
+  document.getElementById('facebtn').style.display = 'none';
+  document.getElementById('faceclear').style.display = 'none';
+  loadTxt.textContent = '新しい島をつくっています…';
+  startMeshing(function(){
+    loadTxt.textContent = 'まっさらな島ができました（住人 ' + MOBS.length + '人）';
+    startBtn.textContent = 'ぼうけんをはじめる';
+    startBtn.style.display = 'block';
+    resetBtn.textContent = '新しい島を作る';
+    resetBtn.style.display = 'block';
+    resetArmed = false;
+    updateFaceButtons();
+    Store.write();
+  });
+}
+
+resetBtn.addEventListener('click', function(){
+  if (!resetArmed){
+    resetArmed = true;
+    resetBtn.textContent = 'もう一度押すと今のワールドは消えます';
+    setTimeout(function(){
+      if (resetArmed){ resetArmed = false; resetBtn.textContent = '新しい島を作る'; }
+    }, 5000);
+    return;
+  }
+  resetArmed = false;
+  newWorld();
+});
+
+boot();
+requestAnimationFrame(loop);
+
+})();
+</script>
+</body>
+</html>
