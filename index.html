@@ -281,7 +281,7 @@
     （<b>Shift</b>を押しながらで10体ずつ、<b>C</b>で全員お帰りいただけます）。<br>
     こわした場所も建てたものも自動で保存され、閉じても次に開いたとき続きから遊べます。<br>
     このページを開いた人はみんな同じワールドに入り、地形の変化とお互いの姿が同期します。<br>
-    <b>T</b>を押すと10秒間マイクで録音し、いま同じワールドにいる全員に声が届きます。<br>
+    <b>T</b>を押すと10秒間マイクで録音し、同じワールドの全員に届きます。自分にも往復して戻り再生されます。<br>
     音が出ます。うるさいときは <b>M</b>（音楽）と <b>N</b>（効果音）で切り替えてください。
   </div>
 </div>
@@ -1514,8 +1514,46 @@ function makeMob(kind, x, y, z, opt){
     speed: isFrog ? 2.2 + Math.random()*0.5
          : isPig ? 1.4 + Math.random()*0.5 : 2.1 + Math.random()*0.6
   };
+  m.nid = (opt.nid !== undefined) ? opt.nid : (Net.mobSeq = (Net.mobSeq + 1) & 0xffff);
+  m.remote = !!opt.remote;                             // 他の人が動かしている個体
+  m.sentAt = 0; m.last = 0;
+  m.tx = x; m.ty = y; m.tz = z; m.tyaw = m.yaw;
   MOBS.push(m);
   return m;
+}
+
+// 他の人が動かしている個体は、届いた位置へなめらかに寄せるだけ
+function updateRemoteMob(m, dt){
+  const ox = m.x, oz = m.z;
+  const k = Math.min(1, dt * 9);
+  m.x += (m.tx - m.x) * k;
+  m.y += (m.ty - m.y) * k;
+  m.z += (m.tz - m.z) * k;
+  let d = m.tyaw - m.yaw;
+  while (d > Math.PI) d -= Math.PI*2;
+  while (d < -Math.PI) d += Math.PI*2;
+  m.yaw += d * Math.min(1, dt * 10);
+  m.dirYaw = m.yaw;
+  const hv = Math.hypot(m.x - ox, m.z - oz) / Math.max(0.004, dt);
+  m.vx = (m.x - ox) / Math.max(0.004, dt);
+  m.vz = (m.z - oz) / Math.max(0.004, dt);
+
+  const dist = Math.hypot(m.x - player.x, m.z - player.z);
+  const hidden = dist > LOD_HIDE;
+  if (m.model.visible === hidden) m.model.visible = !hidden;
+  if (hidden) return;
+  m.model.position.set(m.x, m.y, m.z);
+  m.model.rotation.y = m.dirYaw + Math.PI;
+  m.model.updateMatrix();
+  if (dist > LOD_ANIM) return;
+  if (m.kind === 'frog'){
+    const sub = getBlock(Math.floor(m.x), Math.floor(m.y + 0.75), Math.floor(m.z)) === WATER;
+    animateFrog(m.model, hv, dt, false, sub, 0);
+  } else if (m.kind === 'pig'){
+    animateQuadruped(m.model, hv, dt);
+  } else {
+    animateHumanoid(m.model, hv, dt, { airborne: false });
+  }
 }
 
 function mobSurface(x, z){
@@ -1555,6 +1593,7 @@ function yawTo(fromX, fromZ, toX, toZ){
 }
 
 function updateMob(m, dt){
+  if (m.remote) return updateRemoteMob(m, dt);
   const dxp = player.x - m.x, dzp = player.z - m.z;
   const dist = Math.hypot(dxp, dzp);
 
@@ -1963,7 +2002,7 @@ function pigGoal(m, dt, dist){
   // いまついていく相手がまだ有効か
   if (m.follow){
     const f = m.follow;
-    const ok = (f === player) || (f.alive && (f.kind !== 'pig' || f.follow));
+    const ok = (f === player) || (f.human) || (f.alive && (f.kind !== 'pig' || f.follow));
     if (!ok || Math.hypot(f.x - m.x, f.z - m.z) > 18) leaveTrain(m);
   }
   m.followTimer -= dt;
@@ -1971,6 +2010,12 @@ function pigGoal(m, dt, dist){
     m.followTimer = 0.5 + Math.random()*0.6;
     let best = 13, leader = null;
     if (dist < best){ best = dist; leader = player; }
+    for (const pk in Net.peers){                       // 他のプレイヤーにもついていく
+      const o = Net.peers[pk];
+      if (!o.seen) continue;
+      const d = Math.hypot(o.x - m.x, o.z - m.z);
+      if (d < best){ best = d; leader = o; }
+    }
     const n = NPCS.length;
     if (n){                                            // 仲間も探す（一度に見るのは少しだけ）
       const look = Math.min(n, 24);
@@ -2078,7 +2123,7 @@ function frogGoal(m, dt, dist){
   // 水の中：いまついていく相手が有効か
   if (m.follow){
     const f = m.follow;
-    const ok = (f === player) || (f.alive && (f.kind === 'maikkii' || (f.kind === 'frog' && f.follow)));
+    const ok = (f === player) || (f.human) || (f.alive && (f.kind === 'maikkii' || (f.kind === 'frog' && f.follow)));
     if (!ok || Math.hypot(f.x - m.x, f.z - m.z) > 18) leaveTrain(m);
   }
   m.followTimer -= dt;
@@ -2086,6 +2131,12 @@ function frogGoal(m, dt, dist){
     m.followTimer = 0.5 + Math.random()*0.6;
     let best = 15, leader = null;                     // 人でも仲間でも、近いほうにつく
     if (dist < best){ best = dist; leader = player; }
+    for (const pk in Net.peers){
+      const o = Net.peers[pk];
+      if (!o.seen) continue;
+      const d = Math.hypot(o.x - m.x, o.z - m.z);
+      if (d < best){ best = d; leader = o; }
+    }
     const n = NPCS.length;
     if (n){
       const look = Math.min(n, 24);
@@ -2112,7 +2163,7 @@ function frogGoal(m, dt, dist){
 
   const f = m.follow;
   if (f){
-    const lead = (f === player) ? f.yaw : f.dirYaw;
+    const lead = (f === player) ? f.yaw : (f.dirYaw || 0);
     const gap = (f.kind === 'frog') ? 0.95 : 1.6;
     const gx = f.x + Math.sin(lead)*gap, gz = f.z + Math.cos(lead)*gap;
     const gy = (f === player) ? f.y + 0.5 : f.y;      // 相手と同じ深さまで潜る
@@ -2161,7 +2212,7 @@ function updateMobs(dt){
   waterScanAt -= dt;
   if (waterScanAt <= 0){ scanWater(); waterScanAt = 25; }
   refreshNPCs(dt);
-  Village.tick(dt);
+  if (!Net.on || !Net.up || Net.isHost()) Village.tick(dt);   // 村を進めるのはホストだけ
   for (let i = 0; i < MOBS.length; i++) updateMob(MOBS[i], dt);
 }
 
@@ -2173,6 +2224,7 @@ function clearMobs(){
   }
   player.trainNext = null; player.frogNext = null;
   MOBS.length = 0;
+  Net.rmobs = {};
   NPCS.length = 0;
   Village.workers = 0;
   for (let i = 0; i < Village.tasks.length; i++) Village.tasks[i].owner = null;
@@ -2357,11 +2409,22 @@ function selectSlot(i){
 const bubbleEl = document.getElementById('bubble');
 
 // 見ている場所に住人を呼ぶ
-function callMob(kind, count){
+function callMob(kind, count, at){
   count = count || 1;
-  const hit = raycast(6);
+  if (Net.on && Net.up && !Net.isHost() && !at){       // ゲストはホストに頼む
+    const hit0 = raycast(6);
+    const fx0 = -Math.sin(player.yaw), fz0 = -Math.cos(player.yaw);
+    Net.publishJson('j', { t: 'spawn', id: Net.id, k: kind, n: Math.min(10, count),
+      x: hit0 ? hit0.x + 0.5 : player.x + fx0*2,
+      y: hit0 ? hit0.y + 1.02 : player.y,
+      z: hit0 ? hit0.z + 0.5 : player.z + fz0*2 });
+    toast(NAMES_MOB[kind] + 'を呼びました');
+    return;
+  }
+  const hit = at ? null : raycast(6);
   let x, y, z;
-  if (hit && hit.ny === 1){ x = hit.x + 0.5; y = hit.y + 1.02; z = hit.z + 0.5; }
+  if (at){ x = at.x; y = at.y; z = at.z; }
+  else if (hit && hit.ny === 1){ x = hit.x + 0.5; y = hit.y + 1.02; z = hit.z + 0.5; }
   else {
     const fx = -Math.sin(player.yaw), fz = -Math.cos(player.yaw);
     x = player.x + fx*2; z = player.z + fz*2;
@@ -2388,9 +2451,25 @@ function callMob(kind, count){
     : NAMES_MOB[kind] + 'が ' + (made > 1 ? made + '体 ' : '') + 'やってきた');
 }
 
+// 依頼を受けたホストが確認なしで実行する版
+function sendHome2(){
+  const n = MOBS.length;
+  clearMobs(); updateMobCount();
+  Store.dirty = true;
+  if (Net.on && Net.up){
+    Net.mobGen = (Net.mobGen + 1) & 255;
+    Net.publishJson('j', { t: 'mobclear', id: Net.id });
+  }
+  toast(n + '人が帰りました');
+}
 // 住人にお帰りいただく（2回押しで実行）
 let clearArmed = 0;
 function sendHome(){
+  if (Net.on && Net.up && !Net.isHost()){
+    Net.publishJson('j', { t: 'clearmobs', id: Net.id });
+    toast('みんなに帰ってもらいます');
+    return;
+  }
   if (!MOBS.length){ toast('いま住人はいません'); return; }
   if (clearArmed <= 0){
     clearArmed = 4;
@@ -2401,6 +2480,10 @@ function sendHome(){
   const n = MOBS.length;
   clearMobs(); updateMobCount();
   Store.dirty = true;
+  if (Net.on && Net.up && Net.isHost()){
+    Net.mobGen = (Net.mobGen + 1) & 255;
+    Net.publishJson('j', { t: 'mobclear', id: Net.id });
+  }
   toast(n + '人が帰りました');
 }
 function updateMobCount(){
@@ -2807,13 +2890,12 @@ const Voice = {
       b.set(part, 9);
       Net.mid.push([Net.topic('v'), b]);
     }
-    toast('声を送りました（' + Math.max(1, Math.round(bytes.length/1024)) + 'KB）');
+    toast('声を送りました（' + Math.max(1, Math.round(bytes.length/1024)) + 'KB）。自分にも戻ってきます');
     return total;
   },
 
   onChunk: function(p){
     const id = ((p[1] << 24) | (p[2] << 16) | (p[3] << 8) | p[4]) >>> 0;
-    if (id === (Net.id >>> 0)) return;                 // 自分の声は鳴らさない
     const key = id + ':' + p[5];
     let e = this.inbox[key];
     if (!e) e = this.inbox[key] = { parts: [], got: 0, total: p[7], mime: p[8], at: performance.now() };
@@ -2828,8 +2910,11 @@ const Voice = {
         if (!e.parts[i]) continue;
         all.set(e.parts[i], o); o += e.parts[i].length;
       }
+      const mine = (id === (Net.id >>> 0));
       const peer = Net.peers[id];
-      this.enqueue(all, e.mime, peer ? peer.nick : 'だれか');
+      this.enqueue(all, e.mime, mine
+        ? 'あなたの声（ブローカーから戻りました）'
+        : ((peer ? peer.nick : 'だれか') + ' さんの声'));
     }
     const now = performance.now();                     // 届ききらなかった分を捨てる
     for (const k in this.inbox) if (now - this.inbox[k].at > 20000) delete this.inbox[k];
@@ -2847,7 +2932,7 @@ const Voice = {
     this.playing = true;
     const self = this;
     const done = function(){ setTimeout(function(){ self.next(); }, 200); };
-    toast(item[2] + ' さんの声');
+    toast(item[2]);
     if (!Snd.sfxOn){ done(); return; }                 // 効果音オフなら鳴らさない
     Snd.voiceCue();
     const type = VOICE_MIME[item[1] - 1] || 'audio/webm';
@@ -2879,6 +2964,32 @@ const Voice = {
   }
 };
 
+/* ---- 優先度の計算に使う道具 ---- */
+// 地表からどれだけ埋まっているか（見えない場所は後回しにする）
+function depthBelowSurface(x, y, z){
+  for (let d = 1; d <= 6; d++){
+    if (getBlock(x, y + d, z) === AIR) return d - 1;
+  }
+  return 6;
+}
+function idxToPos(i, out){
+  const x = (i / (WZ*WY)) | 0, r = i - x*(WZ*WY);
+  out[0] = x; out[1] = r % WY; out[2] = (r / WY) | 0;
+  return out;
+}
+// いちばん近い人（自分＋つながっている相手）までの距離
+function nearestHumanDist(x, z, skipSelf){
+  let best = skipSelf ? 1e9 : Math.hypot(player.x - x, player.z - z);
+  for (const k in Net.peers){
+    const q = Net.peers[k];
+    if (!q.seen) continue;
+    const d = Math.hypot(q.x - x, q.z - z);
+    if (d < best) best = d;
+  }
+  return best;
+}
+const _pos3 = [0,0,0];
+
 /* ---- 同期本体 ---- */
 const Net = {
   on: false, up: false, status: 'オフライン',
@@ -2886,7 +2997,8 @@ const Net = {
   peers: {}, host: 0, adopted: false, waitWorld: 0, connAt: 0,
   editQ: new Map(), mid: [], lo: [], stateAcc: 0, editAcc: 0, midAcc: 0, loAcc: 0, seq: 0,
   rate: 0, rateLast: 0, rateT: 0,
-  snap: null, sent: 0, recv: 0, applyQ: [],
+  feed: null, recvTotal: 0, recvGot: 0, sent: 0, recv: 0, applyQ: [],
+  rmobs: {}, mobSeq: 0, mobGen: 0, wasHost: true, feedAcc: 0, mobAcc: 0,
 
   init: function(){
     try { this.nick = window.localStorage.getItem('maikkii-nick') || ''; } catch(e){}
@@ -2931,7 +3043,8 @@ const Net = {
         self.connAt = performance.now();
         c.subscribe(self.topic('#'), { qos: 0 });
         self.setStatus('つながりました');
-        self.publishJson('j', { t: 'hi', id: self.id, nick: self.nick, since: self.since });
+        self.publishJson('j', { t: 'hi', id: self.id, nick: self.nick, since: self.since,
+                                x: Math.round(player.x), z: Math.round(player.z) });
         self.waitWorld = 3.5;                                // 誰かが世界をくれるのを待つ
       });
       c.on('message', function(topic, payload){ self.onMessage(topic, payload); });
@@ -3017,40 +3130,166 @@ const Net = {
     b[14] = Math.max(0, Math.min(255, Math.round(player.vz * 8 + 128)));
     this.send(this.topic('p/' + this.id), b);
   },
+  // 相手に近いほど、地表に近いほど先に送る
+  editScore: function(i, px, pz){
+    idxToPos(i, _pos3);
+    const x = _pos3[0], y = _pos3[1], z = _pos3[2];
+    let d = (px === undefined) ? nearestHumanDist(x, z, true) : Math.hypot(px - x, pz - z);
+    if (d > 1e8) d = 96;                                    // 相手がいないときは中くらい
+    const depth = depthBelowSurface(x, y, z);
+    return d * (depth >= 2 ? 2.4 : 1) + depth * 7;
+  },
   flushEdits: function(){
     if (!this.up || !this.editQ.size) return;
+    const self = this;
     const list = [];
-    this.editQ.forEach(function(v, i){ list.push(i, v); });
-    this.editQ.clear();
-    for (let s = 0; s < list.length; s += 500){              // 1通あたり250マスまで
-      const n = Math.min(250, (list.length - s) / 2);
+    this.editQ.forEach(function(v, i){ list.push({ i: i, v: v, s: self.editScore(i) }); });
+    list.sort(function(a, b){ return a.s - b.s; });
+    const cap = Math.min(list.length, 500);                 // 1回あたりの上限
+    for (let s0 = 0; s0 < cap; s0 += 250){
+      const n = Math.min(250, cap - s0);
       const b = new Uint8Array(3 + n*4);
       b[0] = 2; b[1] = n >> 8; b[2] = n & 255;
       for (let k = 0; k < n; k++){
-        const i = list[s + k*2], v = list[s + k*2 + 1], p = 3 + k*4;
-        b[p] = i & 255; b[p+1] = (i >> 8) & 255; b[p+2] = (i >> 16) & 255; b[p+3] = v;
+        const e = list[s0 + k], p = 3 + k*4;
+        b[p] = e.i & 255; b[p+1] = (e.i >> 8) & 255; b[p+2] = (e.i >> 16) & 255; b[p+3] = e.v;
+        this.editQ.delete(e.i);
       }
       this.send(this.topic('b'), b);
     }
   },
-  // 世界まるごと（低優先度でこま切れに送る）
-  sendWorld: function(to){
+  // 世界の受け渡し。まず種だけ渡して遊べる状態にし、変更点は相手の近くから順に流す
+  sendWorld: function(to, px, pz){
     if (!this.up) return;
-    const bytes = editsToBytes();
+    const list = [];
+    edits.forEach(function(v, i){ list.push({ i: i, s: 0 }); });
     this.publishJson('w', { t: 'world', id: this.id, to: to, seed: SEED,
-                            time: Math.round(time), n: bytes.length,
+                            time: Math.round(time), n: list.length,
                             vx: Village.x, vy: Village.y, vz: Village.z,
                             vk: Village.kind, vw: Village.w });
-    const CH = 5000;
-    const total = Math.max(1, Math.ceil(bytes.length / CH));
-    for (let k = 0; k < total; k++){
-      const part = bytes.subarray(k*CH, Math.min(bytes.length, (k+1)*CH));
-      const b = new Uint8Array(9 + part.length);
-      b[0] = 3;
-      b[1] = (to >>> 24) & 255; b[2] = (to >>> 16) & 255; b[3] = (to >>> 8) & 255; b[4] = to & 255;
-      b[5] = k >> 8; b[6] = k & 255; b[7] = total >> 8; b[8] = total & 255;
-      b.set(part, 9);
-      this.lo.push([this.topic('s'), b]);
+    if (!list.length){ this.feed = null; return; }
+    this.feed = { to: to, list: list, ptr: 0, total: list.length, sx: 0, sz: 0 };
+    this.sortFeed(isFinite(px) ? px : WX/2, isFinite(pz) ? pz : WZ/2);
+  },
+  sortFeed: function(px, pz){
+    const f = this.feed;
+    if (!f) return;
+    const self = this;
+    for (let k = f.ptr; k < f.list.length; k++) f.list[k].s = self.editScore(f.list[k].i, px, pz);
+    const rest = f.list.slice(f.ptr);
+    rest.sort(function(a, b){ return a.s - b.s; });
+    for (let k = 0; k < rest.length; k++) f.list[f.ptr + k] = rest[k];
+    f.sx = px; f.sz = pz;
+  },
+  feedTick: function(){
+    const f = this.feed;
+    if (!f) return false;
+    const q = this.peers[f.to];
+    if (!q){ this.feed = null; return false; }               // 相手が居なくなった
+    if (q.seen && Math.hypot(q.x - f.sx, q.z - f.sz) > 24) this.sortFeed(q.x, q.z);
+    const n = Math.min(300, f.list.length - f.ptr);
+    const b = new Uint8Array(6 + n*4);
+    b[0] = 3;
+    b[1] = (f.to >>> 24) & 255; b[2] = (f.to >>> 16) & 255;
+    b[3] = (f.to >>> 8) & 255;  b[4] = f.to & 255;
+    b[5] = Math.min(255, Math.round((f.ptr + n) / f.total * 255));
+    for (let k = 0; k < n; k++){
+      const i = f.list[f.ptr + k].i, p = 6 + k*4;
+      b[p] = i & 255; b[p+1] = (i >> 8) & 255; b[p+2] = (i >> 16) & 255; b[p+3] = blocks[i];
+    }
+    f.ptr += n;
+    this.send(this.topic('s'), b);
+    if (f.ptr >= f.list.length) this.feed = null;
+    return true;
+  },
+
+  /* ---- 動物と住人の同期（最低優先度・ただし必ず届く） ---- */
+  sendMobs: function(){
+    if (!this.up || !this.isHost()) return;
+    const now = performance.now();
+    const arr = [];
+    for (let i = 0; i < MOBS.length; i++){
+      const m = MOBS[i];
+      if (m.remote) continue;
+      const d = nearestHumanDist(m.x, m.z, false);
+      const stale = Math.min(40, (now - (m.sentAt || 0)) / 1000);
+      arr.push({ m: m, s: d - stale * 9 });              // 近い個体を優先。放置された個体も必ず順番が来る
+    }
+    if (!arr.length) return;
+    arr.sort(function(a, b){ return a.s - b.s; });
+    const n = Math.min(110, arr.length);
+    const b = new Uint8Array(4 + n*11);
+    b[0] = 5; b[1] = this.mobGen & 255; b[2] = n >> 8; b[3] = n & 255;
+    const dv = new DataView(b.buffer);
+    for (let k = 0; k < n; k++){
+      const m = arr[k].m;
+      m.sentAt = now;
+      const p = 4 + k*11;
+      b[p] = m.nid & 255; b[p+1] = (m.nid >> 8) & 255;
+      b[p+2] = (m.kind === 'pig') ? 0 : ((m.kind === 'frog') ? 2 : 1);
+      const sc = Math.max(0, Math.min(15, Math.round((m.scale - 0.8) * 30)));
+      b[p+3] = (sc << 4) | ((m.shirt | 0) & 15);
+      dv.setInt16(p+4, Math.round(m.x * 32));
+      dv.setInt16(p+6, Math.round(m.y * 32));
+      dv.setInt16(p+8, Math.round(m.z * 32));
+      let yw = (m.dirYaw || m.yaw) % (Math.PI*2);
+      if (yw > Math.PI) yw -= Math.PI*2; else if (yw < -Math.PI) yw += Math.PI*2;
+      b[p+10] = Math.round((yw + Math.PI) / (Math.PI*2) * 254) & 255;
+    }
+    this.send(this.topic('m'), b);
+  },
+  onMobs: function(p){
+    if (this.isHost()) return;                          // 自分がホストなら自前の個体を使う
+    const gen = p[1];
+    if (this.mobGen !== gen){ this.mobGen = gen; }
+    const n = (p[2] << 8) | p[3];
+    const now = performance.now();
+    const dv = new DataView(p.buffer, p.byteOffset, p.byteLength);
+    for (let k = 0; k < n; k++){
+      const q = 4 + k*11;
+      if (q + 11 > p.length) break;
+      const nid = p[q] | (p[q+1] << 8);
+      const kind = (p[q+2] === 0) ? 'pig' : ((p[q+2] === 2) ? 'frog' : 'maikkii');
+      const style = p[q+3];
+      const x = dv.getInt16(q+4) / 32, y = dv.getInt16(q+6) / 32, z = dv.getInt16(q+8) / 32;
+      const yaw = p[q+10] / 254 * Math.PI * 2 - Math.PI;
+      let m = this.rmobs[nid];
+      if (!m){
+        m = makeMob(kind, x, y, z, { nid: nid, remote: true,
+                                     scale: 0.8 + (style >> 4) / 30, shirt: style & 15, yaw: yaw });
+        if (!m) continue;
+        this.rmobs[nid] = m;
+      }
+      m.tx = x; m.ty = y; m.tz = z; m.tyaw = yaw; m.last = now;
+    }
+  },
+  // 長く更新の来ない個体は消す
+  pruneMobs: function(dt){
+    this.pruneAcc = (this.pruneAcc || 0) + dt;
+    if (this.pruneAcc < 3) return;
+    this.pruneAcc = 0;
+    const now = performance.now();
+    for (const k in this.rmobs){
+      const m = this.rmobs[k];
+      if (now - m.last < 45000) continue;
+      const i = MOBS.indexOf(m);
+      if (i >= 0) MOBS.splice(i, 1);
+      scene.remove(m.model);
+      delete this.rmobs[k];
+    }
+  },
+  // ホストが替わったら、預かっていた個体をそのまま引き継ぐ
+  checkRole: function(dt){
+    this.roleAcc = (this.roleAcc || 0) + dt;
+    if (this.roleAcc < 0.5) return;
+    this.roleAcc = 0;
+    const host = this.isHost();
+    if (host === this.wasHost) return;
+    this.wasHost = host;
+    if (host){
+      for (const k in this.rmobs){ this.rmobs[k].remote = false; }
+      this.rmobs = {};
+      this.setStatus('この世界のホストになりました');
     }
   },
 
@@ -3074,6 +3313,18 @@ const Net = {
         this.send(v[0], v[1]);
       }
     }
+    // 新しく来た人への世界の受け渡し（相手の近くから順に）
+    if (this.feed && buf < 32768){
+      this.feedAcc += dt;
+      if (this.feedAcc >= 0.08){ this.feedAcc = 0; this.feedTick(); }
+    }
+    // 動物と住人。優先度はいちばん低いが、止まらないよう最低速度を確保する
+    this.mobAcc += dt;
+    const mobPeriod = (buf > 24576 || this.feed) ? 1.6 : 0.4;
+    if (this.mobAcc >= mobPeriod){ this.mobAcc = 0; this.sendMobs(); }
+    this.pruneMobs(dt);
+    this.checkRole(dt);
+
     if (this.lo.length && buf < 16384){
       this.loAcc += dt;
       if (this.loAcc >= 0.04){
@@ -3107,9 +3358,18 @@ const Net = {
       if (o.t === 'hi'){
         this.addPeer(o, true);                          // 新しく入ってきた
         this.publishJson('j', { t: 'me', id: this.id, nick: this.nick, since: this.since });
-        if (this.isHost()) this.sendWorld(o.id);            // 先にいた人が世界を渡す
+        if (this.isHost()) this.sendWorld(o.id, o.x, o.z);  // 先にいた人が世界を渡す
       } else if (o.t === 'me'){
         this.addPeer(o, false);                         // もともといた人の返事
+      } else if (o.t === 'spawn'){
+        if (this.isHost() && isFinite(o.x)){
+          callMob(o.k === 'pig' ? 'pig' : (o.k === 'frog' ? 'frog' : 'maikkii'),
+                  Math.min(10, o.n | 0), { x: o.x, y: o.y, z: o.z });
+        }
+      } else if (o.t === 'clearmobs'){
+        if (this.isHost() && MOBS.length) sendHome2();
+      } else if (o.t === 'mobclear'){
+        if (!this.isHost()){ clearMobs(); this.rmobs = {}; updateMobCount(); }
       } else if (o.t === 'bye'){
         this.removePeer(o.id);
       } else if (o.t === 'world'){
@@ -3133,18 +3393,28 @@ const Net = {
       }
       return;
     }
+    if (type === 5){                                        // 動物と住人
+      this.onMobs(p);
+      return;
+    }
     if (type === 4){                                        // 声のかたまり
       Voice.onChunk(p);
       return;
     }
-    if (type === 3){                                        // 世界のかたまり
+    if (type === 3){                                        // 世界の変更点（近い順に届く）
       const to = (p[1] << 24) | (p[2] << 16) | (p[3] << 8) | p[4];
-      if (to !== this.id || !this.snap) return;
-      const k = (p[5] << 8) | p[6], total = (p[7] << 8) | p[8];
-      this.snap.parts[k] = new Uint8Array(p.subarray(9));
-      this.snap.got++;
-      this.setStatus('世界を受け取り中 ' + Math.round(this.snap.got / total * 100) + '%');
-      if (this.snap.got >= total) this.finishAdopt();
+      if (to !== this.id) return;
+      const n = (p.length - 6) >> 2;
+      for (let k = 0; k < n; k++){
+        const q = 6 + k*4;
+        const i = p[q] | (p[q+1] << 8) | (p[q+2] << 16), v = p[q+3];
+        if (i < 0 || i >= blocks.length || v > WATER) continue;
+        idxToPos(i, _pos3);
+        this.applyQ.push([_pos3[0], _pos3[1], _pos3[2], v]);
+      }
+      this.recvGot += n;
+      const pct = Math.round(p[5] / 255 * 100);
+      this.setStatus(pct >= 99 ? '世界を同期しました' : ('世界を受け取り中… ' + pct + '%'));
       return;
     }
   },
@@ -3193,7 +3463,8 @@ const Net = {
       model.add(tag);
       q = { id: o.id, nick: o.nick, since: o.since || Date.now(), model: model, tag: tag,
             x: 0, y: 0, z: 0, yaw: 0, tx: 0, ty: 0, tz: 0, tyaw: 0, pitch: 0,
-            vx: 0, vz: 0, flags: 0, seen: false, last: performance.now(), phase: 0 };
+            vx: 0, vz: 0, flags: 0, seen: false, last: performance.now(), phase: 0,
+            human: true, alive: true, dirYaw: 0, trainNext: null, frogNext: null };
       this.peers[o.id] = q;
       this.updatePanel();
     } else if (o.nick && o.nick !== q.nick){
@@ -3208,6 +3479,7 @@ const Net = {
   removePeer: function(id){
     const q = this.peers[id];
     if (!q) return;
+    q.alive = false; q.trainNext = null; q.frogNext = null;
     scene.remove(q.model);
     delete this.peers[id];
     Snd.leave();
@@ -3243,6 +3515,7 @@ const Net = {
       while (d < -Math.PI) d += Math.PI*2;
       q.yaw += d * Math.min(1, dt * 12);
       const m = q.model;
+      q.dirYaw = q.yaw;
       m.position.set(q.x, q.y, q.z);
       m.rotation.y = q.yaw + Math.PI;
       m.updateMatrix();
@@ -3262,36 +3535,16 @@ const Net = {
   /* ---- 世界の受け取り ---- */
   beginAdopt: function(o){
     if (this.adopted) return;
-    this.waitWorld = 0;
-    this.snap = { parts: [], got: 0, meta: o };
-    this.setStatus('世界を受け取り中…');
-    if (!o.n){ this.finishAdopt(); }
-  },
-  finishAdopt: function(){
-    const s = this.snap, o = s ? s.meta : null;
-    this.snap = null;
-    if (!o) return;
     this.adopted = true;
-    let bytes = new Uint8Array(0);
-    if (s.parts.length){
-      let len = 0;
-      for (let i = 0; i < s.parts.length; i++) if (s.parts[i]) len += s.parts[i].length;
-      bytes = new Uint8Array(len);
-      let p = 0;
-      for (let i = 0; i < s.parts.length; i++){
-        if (!s.parts[i]) continue;
-        bytes.set(s.parts[i], p); p += s.parts[i].length;
-      }
-    }
+    this.waitWorld = 0;
+    // 種から地形を作り直せばすぐ遊べる。手を加えた場所だけ後から届く
     SEED = o.seed | 0;
     blocks.fill(AIR);
     generateWorld();
     edits.clear(); editsB64 = null;
-    const n = applyEditBytes(bytes);
     if (isFinite(o.time)) time = o.time;
-    clearMobs();
+    clearMobs(); this.rmobs = {};
     if (!running) spawn();
-    populate();
     updateMobCount(); scanWater();
     Village.tasks.length = 0; Village.ready = false;
     if (isFinite(o.vx)){
@@ -3299,11 +3552,12 @@ const Net = {
       Village.kind = (o.vk === 'tower') ? 'tower' : 'hut';
       Village.w = Village.d = Math.max(3, Math.min(9, o.vw|0));
       Village.makeTasks(); Village.ready = true;
-    } else Village.start(player.x, player.z);
+    }
     Store.dirty = true;
-    this.setStatus('世界を同期しました（' + n + 'マス）');
-    startMeshing(function(){ toast('みんなの世界に合流しました'); });
-  }
+    this.recvTotal = o.n || 0; this.recvGot = 0;
+    this.setStatus(this.recvTotal ? '世界を受け取り中… 0%' : '世界を同期しました');
+    startMeshing(function(){ toast('世界に合流しました（近くから順に届きます）'); });
+  },
 };
 
 /* =========================================================
