@@ -157,32 +157,6 @@
   .btnrow .subbtn{margin-top:0;}
   .startbtn.small{font-size:14px;padding:10px 26px;}
 
-  /* ---- 顔の撮影 ---- */
-  #facepanel{
-    position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);z-index:20;
-    display:none;flex-direction:column;align-items:center;gap:12px;
-    width:min(360px,90vw);padding:16px;
-    background:rgba(11,10,22,.97);
-    border:3px solid var(--paper);box-shadow:8px 8px 0 rgba(0,0,0,.5);
-  }
-  #camwrap{
-    position:relative;width:100%;height:min(44vh,280px);
-    background:#000;overflow:hidden;border:2px solid rgba(246,241,228,.3);
-  }
-  #cam{width:100%;height:100%;object-fit:contain;transform:scaleX(-1);display:block;}
-  #camoverlay{position:absolute;inset:0;width:100%;height:100%;transform:scaleX(-1);pointer-events:none;}
-  #camguide{position:absolute;inset:0;pointer-events:none;}
-  #camguide::before{
-    content:"";position:absolute;left:50%;top:46%;
-    width:54%;height:62%;transform:translate(-50%,-50%);
-    border:2px dashed rgba(255,255,255,.4);border-radius:50%;
-  }
-  #facepreview{
-    display:none;width:176px;height:176px;
-    border:3px solid var(--gold);background:#000;
-  }
-  #facemsg{font-size:12px;line-height:1.7;text-align:center;opacity:.9;}
-  #facenote{font-size:10px;opacity:.55;text-align:center;line-height:1.6;}
   #howto{font-size:12px;line-height:2;opacity:.8;text-align:center;max-width:min(560px,86vw);}
   #howto b{color:var(--gold);}
   #bar{width:min(420px,80vw);height:14px;border:3px solid var(--paper);padding:2px;}
@@ -272,8 +246,6 @@
   <div id="loadtxt">地面をつくっています…</div>
   <button class="startbtn" id="start" style="display:none">ぼうけんをはじめる</button>
   <div class="btnrow">
-    <button class="subbtn" id="facebtn" style="display:none">仲間の顔を自分にする</button>
-    <button class="subbtn" id="faceclear" style="display:none">顔をもとにもどす</button>
     <button class="subbtn" id="reset" style="display:none">新しい島を作る</button>
   </div>
 
@@ -287,23 +259,7 @@
     <div class="nethint">このページを開いた人はみんな同じワールドに入ります。地形の変化とお互いの姿がそのまま共有されます。</div>
   </div>
 
-  <div id="facepanel">
-    <div id="camwrap">
-      <video id="cam" playsinline muted></video>
-      <canvas id="camoverlay"></canvas>
-      <div id="camguide"></div>
-    </div>
-    <canvas id="facepreview" width="256" height="256"></canvas>
-    <div id="facemsg">枠に顔を合わせてください</div>
-    <div class="btnrow">
-      <button class="startbtn small" id="shoot">撮影</button>
-      <button class="startbtn small" id="faceok" style="display:none">これにする</button>
-      <button class="subbtn" id="faceretry" style="display:none">撮り直す</button>
-      <button class="subbtn" id="facecancel">やめる</button>
-    </div>
-    <div id="facenote">写真はこの端末の中だけで使われます。どこにも送信されません。</div>
-  </div>
-  <div id="howto" style="display:none">
+ <div id="howto" style="display:none">
     <b>WASD</b>で歩く・<b>Space</b>でジャンプ・<b>左クリック</b>でこわす・<b>右クリック</b>でおく<br>
     <b>F</b>で三人称視点にすると、マイッキーが見えます。<b>V</b>でしゃべります。<br>
     仲間たちは自分で家や塔を建てます。叩くとこちらを向き、ブタは一列になってついてきます。<br>
@@ -313,7 +269,6 @@
     （<b>Shift</b>を押しながらで10体ずつ、<b>C</b>で全員お帰りいただけます）。<br>
     こわした場所も建てたものも自動で保存され、閉じても次に開いたとき続きから遊べます。<br>
     このページを開いた人はみんな同じワールドに入り、地形の変化とお互いの姿が同期します。<br>
-    「仲間の顔を自分にする」を押すと、カメラで撮った顔がマイッキー全員の顔になります。<br>
     音が出ます。うるさいときは <b>M</b>（音楽）と <b>N</b>（効果音）で切り替えてください。
   </div>
 </div>
@@ -619,7 +574,6 @@ function makeSave(){
     p: { x:r2(player.x), y:r2(player.y), z:r2(player.z), yaw:r2(player.yaw), pitch:r2(player.pitch),
          slot: hotIndex, broke: player.broke, third: player.thirdPerson },
     e: encodeEdits(),
-    f: faceShot,
     vg: Village.ready ? { x:Village.x, y:Village.y, z:Village.z, k:Village.kind, w:Village.w } : null,
     m: MOBS.map(function(m){
       return { k:m.kind, x:r2(m.x), y:r2(m.y), z:r2(m.z), a:r2(m.yaw), s:r2(m.scale), c:m.shirt };
@@ -1009,6 +963,28 @@ const Snd = {
     if (place){ this.tone(300, 150, 0.09, 'square', v*0.14); this.burst(0.09, 720, 1.0, v*0.22); }
     else { this.burst(0.15, 950, 1.1, v*0.34); this.tone(175, 90, 0.09, 'square', v*0.10); }
   },
+  // 誰かが来たときの通知音（明るい三和音のチャイム）
+  join: function(){
+    if (!this.ready || !this.sfxOn) return;
+    const t0 = this.ctx.currentTime;
+    const notes = [784, 988, 1319];
+    for (let i = 0; i < notes.length; i++){
+      const t = t0 + i*0.085;
+      const o = this.ctx.createOscillator(); o.type = 'triangle';
+      o.frequency.setValueAtTime(notes[i], t);
+      const g = this.ctx.createGain();
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(0.15, t + 0.015);
+      g.gain.exponentialRampToValueAtTime(0.0004, t + 0.55);
+      o.connect(g); g.connect(this.sfx);
+      o.start(t); o.stop(t + 0.6);
+    }
+  },
+  // 誰かが去ったときの短い音
+  leave: function(){
+    if (!this.ready || !this.sfxOn) return;
+    this.tone(660, 440, 0.22, 'triangle', 0.09);
+  },
   // カエルの鳴き声（ビブラートでゲコゲコ）
   croak: function(d){
     if (!this.ready || !this.sfxOn) return;
@@ -1098,37 +1074,7 @@ function mat(c){
   if (!matCache[c]) matCache[c] = new THREE.MeshLambertMaterial({ color: c });
   return matCache[c];
 }
-const DEFAULT_FACE = faceTexture();
-const FACE_MAT = new THREE.MeshLambertMaterial({ map: DEFAULT_FACE });
-let faceShot = null;                 // 撮影した顔（データURL）
-
-const FACE_TEX_SIZE = 256;               // 顔テクスチャの解像度（写真のまま貼る）
-
-// 撮った顔をマイッキー全員に反映する（材質を共有しているので一括で変わる）
-function applyFace(dataURL){
-  try {
-    const im = new Image();
-    im.onload = function(){
-      const cv = document.createElement('canvas');
-      cv.width = cv.height = FACE_TEX_SIZE;
-      const c = cv.getContext('2d');
-      c.imageSmoothingEnabled = true;
-      if ('imageSmoothingQuality' in c) c.imageSmoothingQuality = 'high';
-      c.drawImage(im, 0, 0, FACE_TEX_SIZE, FACE_TEX_SIZE);
-      const tex = new THREE.CanvasTexture(cv);   // 既定の線形補間とミップマップのまま使う
-      try { tex.anisotropy = renderer.capabilities.getMaxAnisotropy(); } catch(e){}
-      if (FACE_MAT.map && FACE_MAT.map !== DEFAULT_FACE) FACE_MAT.map.dispose();
-      FACE_MAT.map = tex;
-      FACE_MAT.needsUpdate = true;
-    };
-    im.src = dataURL;
-  } catch(e){}
-}
-function restoreFace(){
-  if (FACE_MAT.map && FACE_MAT.map !== DEFAULT_FACE) FACE_MAT.map.dispose();
-  FACE_MAT.map = DEFAULT_FACE;
-  FACE_MAT.needsUpdate = true;
-}
+const FACE_MAT = new THREE.MeshLambertMaterial({ map: faceTexture() });
 const SKIN = 0xf6c9a0, HAIR = 0x2b1c14, PANTS = 0x35508f, SHOE = 0x2a2a33;
 const SHIRTS = [0xe2402f, 0x3f9d5a, 0xf0b429, 0x4f6ddb, 0xa05fc0, 0xe07ea8, 0x2fb5b0];
 
@@ -2467,290 +2413,11 @@ function talk(text){
   } catch(e){}
 }
 
-/* =========================================================
-   12-B. カメラで顔を撮る
-   ========================================================= */
-// ゆるい肌色判定（色白から色黒まで広くカバーする）
-function looseSkin(r, g, b){
-  if (r < 32) return false;
-  if (r < g || r < b) return false;
-  if (Math.max(r,g,b) - Math.min(r,g,b) < 6) return false;
-  const cr = 128 + 0.5*r - 0.418688*g - 0.081312*b;
-  const cb = 128 - 0.168736*r - 0.331264*g + 0.5*b;
-  return cr > 131 && cr < 192 && cb > 70 && cb < 140;
-}
-
-// 検出用に縮小したフレームを作る（鏡像にはしない）
-function grabFrame(video, DW){
-  const vw = video.videoWidth, vh = video.videoHeight;
-  if (!vw || !vh) return null;
-  const w = DW, h = Math.max(24, Math.round(DW * vh / vw));
-  const cv = document.createElement('canvas');
-  cv.width = w; cv.height = h;
-  const c = cv.getContext('2d');
-  c.drawImage(video, 0, 0, w, h);
-  return { ctx: c, w: w, h: h };
-}
-
-// 顔の位置を推定する。戻り値は縮小フレーム上の正方形
-function detectFaceBox(px, W, H){
-  const ocx = W*0.5, ocy = H*0.46, orx = W*0.27, ory = H*0.31;
-  const guide = { cx: ocx, cy: ocy, s: ory*2, ok: false };
-
-  // 1) ガイドの内側（頬のあたり）から基準の肌色を取る。中央値なので影や照明に強い
-  const rs = [], gs = [], bs = [];
-  for (let y = 0; y < H; y += 2)
-    for (let x = 0; x < W; x += 2){
-      const dx = (x - ocx)/(orx*0.62), dy = (y - (ocy + ory*0.10))/(ory*0.5);
-      if (dx*dx + dy*dy > 1) continue;
-      const p = (y*W + x)*4;
-      if (!looseSkin(px[p], px[p+1], px[p+2])) continue;
-      rs.push(px[p]); gs.push(px[p+1]); bs.push(px[p+2]);
-    }
-  if (rs.length < 30) return guide;
-  const mid = function(a){ a.sort(function(u, v){ return u - v; }); return a[a.length >> 1]; };
-  const r0 = mid(rs), g0 = mid(gs), b0 = mid(bs);
-  const sum0 = r0 + g0 + b0;
-  const cr0 = r0/sum0, cg0 = g0/sum0;
-  const lum0 = 0.299*r0 + 0.587*g0 + 0.114*b0;
-
-  // 2) 基準色に近い画素を集める。明るさではなく色味で比べるので影に強い
-  const bx0 = Math.max(0, (ocx - orx*2.0)|0), bx1 = Math.min(W, (ocx + orx*2.0)|0);
-  const by0 = Math.max(0, (ocy - ory*1.8)|0), by1 = Math.min(H, (ocy + ory*2.0)|0);
-  const mask = new Uint8Array(W*H);
-  for (let y = by0; y < by1; y++)
-    for (let x = bx0; x < bx1; x++){
-      const p = (y*W + x)*4;
-      const r = px[p], g = px[p+1], b = px[p+2], sm = r + g + b;
-      if (sm < 45) continue;
-      if (Math.abs(r/sm - cr0) > 0.028 || Math.abs(g/sm - cg0) > 0.028) continue;
-      const lum = 0.299*r + 0.587*g + 0.114*b;
-      if (lum < lum0*0.40 || lum > lum0*1.85) continue;
-      mask[y*W + x] = 1;
-    }
-
-  // 3) ガイド内の画素を種にして、つながっている部分だけを顔とみなす
-  //    （背景の壁や、離れた場所に写った手はここで除かれる）
-  const q = new Int32Array(W*H), seen = new Uint8Array(W*H);
-  let qh = 0, qt = 0;
-  for (let y = by0; y < by1; y++)
-    for (let x = bx0; x < bx1; x++){
-      const dx = (x - ocx)/orx, dy = (y - ocy)/ory;
-      if (dx*dx + dy*dy > 1) continue;
-      const i = y*W + x;
-      if (mask[i] && !seen[i]){ seen[i] = 1; q[qt++] = i; }
-    }
-  if (qt < 25) return guide;
-
-  const rowN = new Int32Array(H), rowLum = new Float64Array(H);
-  const rowMin = new Int32Array(H).fill(W), rowMax = new Int32Array(H).fill(-1);
-  let area = 0, minY = H, maxY = 0;
-  while (qh < qt){
-    const i = q[qh++], x = i % W, y = (i / W) | 0;
-    const p = i*4;
-    area++; rowN[y]++;
-    rowLum[y] += 0.299*px[p] + 0.587*px[p+1] + 0.114*px[p+2];
-    if (x < rowMin[y]) rowMin[y] = x;
-    if (x > rowMax[y]) rowMax[y] = x;
-    if (y < minY) minY = y;
-    if (y > maxY) maxY = y;
-    if (x > bx0     && mask[i-1] && !seen[i-1]){ seen[i-1] = 1; q[qt++] = i-1; }
-    if (x < bx1-1   && mask[i+1] && !seen[i+1]){ seen[i+1] = 1; q[qt++] = i+1; }
-    if (y > by0     && mask[i-W] && !seen[i-W]){ seen[i-W] = 1; q[qt++] = i-W; }
-    if (y < by1-1   && mask[i+W] && !seen[i+W]){ seen[i+W] = 1; q[qt++] = i+W; }
-  }
-  if (area < (bx1-bx0)*(by1-by0)*0.012) return guide;   // 小さすぎるので顔ではない
-
-  // 4) 横幅が最大の行を基準に、あごと額を決める（首は細いので自然に切れる）
-  let peak = minY, peakN = 0;
-  for (let y = minY; y <= maxY; y++) if (rowN[y] > peakN){ peakN = rowN[y]; peak = y; }
-  let chin = peak, brow = peak;
-  for (let y = peak; y <= maxY; y++){ if (rowN[y] < peakN*0.55) break; chin = y; }
-  for (let y = peak; y >= minY; y--){ if (rowN[y] < peakN*0.34) break; brow = y; }
-  let left = W, right = -1;
-  for (let y = brow; y <= chin; y++){
-    if (rowMax[y] < 0) continue;
-    if (rowMin[y] < left) left = rowMin[y];
-    if (rowMax[y] > right) right = rowMax[y];
-  }
-  if (right <= left) return guide;
-
-  // 背景まで肌色と判定されて広がってしまった場合は、無理に切らずガイド枠に任せる
-  if (right - left > (bx1-bx0)*0.86 || chin - brow > (by1-by0)*0.86) return guide;
-
-  const fw = right - left, fh = chin - brow;
-
-  // 髪の色が肌に近いと髪まで領域に入る。上端が暗ければ髪込みとみなして倍率を変える
-  let topLum = 0, topN = 0;
-  const topEnd = Math.min(chin, brow + Math.max(1, (fh*0.25)|0));
-  for (let y = brow; y <= topEnd; y++){ topLum += rowLum[y]; topN += rowN[y]; }
-  const withHair = topN > 0 && (topLum/topN) < lum0*0.72;
-
-  let size = withHair ? Math.max(fw*1.18, fh*1.08)   // すでに頭全体が入っている
-                      : Math.max(fw*1.45, fh*1.34);  // 肌だけなので髪のぶん広げる
-  size = Math.max(ory*0.9, Math.min(size, ory*3.4));
-  return { cx: (left + right)/2, cy: chin - size*0.435, s: size, ok: true };
-}
-
-function analyzeFace(video, DW){
-  const f = grabFrame(video, DW || 200);
-  if (!f) return null;
-  let px;
-  try { px = f.ctx.getImageData(0, 0, f.w, f.h).data; } catch(e){ return null; }
-  return { box: detectFaceBox(px, f.w, f.h), w: f.w, h: f.h };
-}
-
-// 顔の部分を、カメラの解像度のまま切り出す（縮小してドット絵にはしない）
-function captureFace(video){
-  const vw = video.videoWidth, vh = video.videoHeight;
-  if (!vw || !vh) return null;
-  const a = analyzeFace(video, 200);
-  if (!a) return null;
-  const k = vw / a.w;                                   // 縮小フレーム → 実際の解像度
-  const s = Math.min(a.box.s * k, Math.min(vw, vh));
-  const sx = Math.max(0, Math.min(vw - s, a.box.cx*k - s/2));
-  const sy = Math.max(0, Math.min(vh - s, a.box.cy*k - s/2));
-  const out = document.createElement('canvas');
-  out.width = out.height = FACE_TEX_SIZE;
-  const oc = out.getContext('2d');
-  oc.imageSmoothingEnabled = true;
-  if ('imageSmoothingQuality' in oc) oc.imageSmoothingQuality = 'high';
-  oc.translate(FACE_TEX_SIZE, 0); oc.scale(-1, 1);      // 鏡像（プレビューと同じ向き）
-  oc.drawImage(video, sx, sy, s, s, 0, 0, FACE_TEX_SIZE, FACE_TEX_SIZE);
-  return { canvas: out, detected: a.box.ok };
-}
-
-const FaceCam = {
-  stream: null, pending: null, timer: null, stage: 'live',
-  el: function(id){ return document.getElementById(id); },
-  setStage: function(stage){
-    this.stage = stage;
-    const shot = (stage === 'shot');
-    this.el('camwrap').style.display = shot ? 'none' : 'block';
-    this.el('facepreview').style.display = shot ? 'block' : 'none';
-    this.el('shoot').style.display = shot ? 'none' : 'block';
-    this.el('faceok').style.display = shot ? 'block' : 'none';
-    this.el('faceretry').style.display = shot ? 'block' : 'none';
-  },
-  open: function(){
-    const self = this, msg = this.el('facemsg');
-    this.el('facepanel').style.display = 'flex';
-    this.setStage('live');
-    const md = navigator.mediaDevices;
-    if (!md || !md.getUserMedia){
-      msg.textContent = 'このブラウザ・この画面ではカメラを使えません。HTMLを保存してブラウザで直接開くと使えます。';
-      this.el('shoot').style.display = 'none';
-      return;
-    }
-    msg.textContent = 'カメラの使用を許可してください…';
-    md.getUserMedia({ video: { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false })
-      .then(function(st){
-        self.stream = st;
-        const v = self.el('cam');
-        v.srcObject = st;
-        const p = v.play();
-        if (p && p.catch) p.catch(function(){});
-        msg.textContent = '顔を映してください';
-        self.startWatch();
-      })
-      .catch(function(err){
-        const name = (err && err.name) ? err.name : 'エラー';
-        msg.textContent = 'カメラを開けませんでした（' + name + '）。'
-          + 'この埋め込み画面では許可されていないことがあります。HTMLをダウンロードして開いてみてください。';
-        self.el('shoot').style.display = 'none';
-      });
-  },
-  // 検出した顔の位置を映像に重ねて表示する
-  startWatch: function(){
-    const self = this;
-    this.stopWatch();
-    this.timer = setInterval(function(){ self.watch(); }, 220);
-  },
-  stopWatch: function(){ if (this.timer){ clearInterval(this.timer); this.timer = null; } },
-  watch: function(){
-    if (!this.stream || this.stage !== 'live') return;
-    const v = this.el('cam'), cv = this.el('camoverlay'), wrap = this.el('camwrap');
-    if (!v || !cv || !wrap || !v.videoWidth) return;
-    const cw = wrap.clientWidth, ch = wrap.clientHeight;
-    if (!cw || !ch) return;
-    if (cv.width !== cw || cv.height !== ch){ cv.width = cw; cv.height = ch; }
-    const c = cv.getContext('2d');
-    c.clearRect(0, 0, cw, ch);
-    const a = analyzeFace(v, 160);
-    if (!a) return;
-    const sc = Math.min(cw / v.videoWidth, ch / v.videoHeight);   // object-fit:contain と同じ計算
-    const ox = (cw - v.videoWidth*sc)/2, oy = (ch - v.videoHeight*sc)/2;
-    const k = (v.videoWidth / a.w) * sc;
-    const s = a.box.s * k;
-    c.lineWidth = 3;
-    c.strokeStyle = a.box.ok ? '#7fd6a6' : 'rgba(255,255,255,.35)';
-    c.strokeRect(ox + a.box.cx*k - s/2, oy + a.box.cy*k - s/2, s, s);
-    this.el('facemsg').textContent = a.box.ok
-      ? '顔を見つけました。この枠のまま切り取ります'
-      : '枠に顔が入るように近づいてください';
-  },
-  shoot: function(){
-    const res = captureFace(this.el('cam'));
-    if (!res){ this.el('facemsg').textContent = 'まだ映像が来ていません。少し待ってもう一度…'; return; }
-    this.pending = res.canvas.toDataURL('image/jpeg', 0.92);
-    const pv = this.el('facepreview'), c = pv.getContext('2d');
-    c.imageSmoothingEnabled = true;
-    c.clearRect(0, 0, FACE_TEX_SIZE, FACE_TEX_SIZE);
-    c.drawImage(res.canvas, 0, 0);
-    this.setStage('shot');
-    this.el('facemsg').textContent = res.detected
-      ? 'この顔をマイッキー全員に貼り付けます'
-      : '顔をうまく見つけられなかったので枠の位置で切りました。撮り直せます';
-  },
-  accept: function(){
-    if (!this.pending) return;
-    faceShot = this.pending;
-    applyFace(faceShot);
-    Store.dirty = true; Store.write();
-    this.close();
-    updateFaceButtons();
-    toast('みんなの顔が変わりました');
-  },
-  close: function(){
-    this.stopWatch();
-    if (this.stream){
-      const t = this.stream.getTracks ? this.stream.getTracks() : [];
-      for (let i = 0; i < t.length; i++) t[i].stop();
-      this.stream = null;
-    }
-    const v = this.el('cam');
-    if (v) v.srcObject = null;
-    this.pending = null;
-    this.el('facepanel').style.display = 'none';
-  }
-};
-
-function updateFaceButtons(){
-  const fb = document.getElementById('facebtn'), fc = document.getElementById('faceclear');
-  fb.style.display = 'block';
-  fb.textContent = faceShot ? '顔を撮り直す' : '仲間の顔を自分にする';
-  fc.style.display = faceShot ? 'block' : 'none';
-}
 document.getElementById('netoff').addEventListener('click', function(){
   if (Net.on){ Net.setWanted(false); Net.stop(); this.textContent = 'みんなで遊ぶ'; }
   else { Net.setWanted(true); Net.connect(); this.textContent = 'ひとりで遊ぶ'; }
 });
 window.addEventListener('beforeunload', function(){ Net.disconnect(); });
-
-document.getElementById('facebtn').addEventListener('click', function(){ FaceCam.open(); });
-document.getElementById('shoot').addEventListener('click', function(){ FaceCam.shoot(); });
-document.getElementById('faceok').addEventListener('click', function(){ FaceCam.accept(); });
-document.getElementById('faceretry').addEventListener('click', function(){
-  FaceCam.setStage('live');
-  FaceCam.el('facemsg').textContent = '顔を映してください';
-  FaceCam.startWatch();
-});
-document.getElementById('facecancel').addEventListener('click', function(){ FaceCam.close(); });
-document.getElementById('faceclear').addEventListener('click', function(){
-  faceShot = null; restoreFace(); updateFaceButtons();
-  Store.dirty = true; Store.write();
-  toast('もとの顔にもどしました');
-});
 
 /* =========================================================
    13. 入力
@@ -2887,7 +2554,6 @@ function lock(){
   catch(e){}
 }
 function start(){
-  FaceCam.close();
   overlay.classList.add('hide');
   document.getElementById('crosshair').style.display = 'block';
   document.getElementById('stats').style.display = 'block';
@@ -2911,7 +2577,6 @@ function pause(){
   document.getElementById('reset').style.display = Store.mode === 'none' ? 'none' : 'block';
   resetArmed = false;
   document.getElementById('reset').textContent = '新しい島を作る';
-  updateFaceButtons();
 }
 
 // タブを閉じる・隠すときにも保存
@@ -2999,7 +2664,13 @@ function nameSprite(text){
   c.strokeStyle = '#f6f1e4'; c.lineWidth = 3; c.strokeRect(1.5, 9.5, cv.width - 3, 45);
   c.fillStyle = '#f6f1e4'; c.fillText(text, cv.width / 2, 33);
   const tex = new THREE.CanvasTexture(cv);
-  const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: true }));
+  const sp = new THREE.Sprite(new THREE.SpriteMaterial({
+    map: tex, transparent: true,
+    depthTest: false,          // ブロックの向こうにいても名前は見える
+    depthWrite: false,
+    fog: false                 // 遠くの霧で消えないようにする
+  }));
+  sp.renderOrder = 1000;       // いちばん最後に描く
   sp.userData.ratio = cv.width / 64;
   sp.scale.set(sp.userData.ratio * 0.62, 0.62, 1);
   return sp;
@@ -3009,7 +2680,7 @@ function nameSprite(text){
 const Net = {
   on: false, up: false, status: 'オフライン',
   client: null, room: '', id: 0, nick: '', since: 0,
-  peers: {}, host: 0, adopted: false, waitWorld: 0,
+  peers: {}, host: 0, adopted: false, waitWorld: 0, connAt: 0,
   editQ: new Map(), lo: [], stateAcc: 0, editAcc: 0, loAcc: 0, seq: 0,
   rate: 0, rateLast: 0, rateT: 0,
   snap: null, sent: 0, recv: 0, applyQ: [],
@@ -3054,6 +2725,7 @@ const Net = {
       self.client = c;
       c.on('connect', function(){
         self.up = true;
+        self.connAt = performance.now();
         c.subscribe(self.topic('#'), { qos: 0 });
         self.setStatus('つながりました');
         self.publishJson('j', { t: 'hi', id: self.id, nick: self.nick, since: self.since });
@@ -3072,12 +2744,19 @@ const Net = {
     });
   },
   disconnect: function(){
-    if (this.client){
-      if (this.up){ try { this.publishJson('j', { t: 'bye', id: this.id }); } catch(e){} }
-      try { this.client.end(true); } catch(e){}
-    }
+    const c = this.client, wasUp = this.up;
     this.client = null; this.up = false;
     this.clearPeers();
+    if (!c) return;
+    const kill = function(){ try { c.end(true); } catch(e){} };
+    if (!wasUp){ kill(); return; }
+    try {                                              // 「帰ります」を送り終えてから閉じる
+      const b = u8str(JSON.stringify({ t: 'bye', id: this.id }));
+      const p = new Uint8Array(b.length + 1);
+      p[0] = 9; p.set(b, 1);
+      c.publish(this.topic('j'), p, { qos: 0 });
+      setTimeout(kill, 400);                           // 送信が流れ切ってから閉じる
+    } catch(e){ kill(); }
   },
   // 送信の詰まり具合。ソケットが取れないときは直近1秒の送信量から推定する
   buffered: function(){
@@ -3214,11 +2893,11 @@ const Net = {
       let o; try { o = JSON.parse(strU8(p, 1, p.length)); } catch(e){ return; }
       if (!o || o.id === this.id) return;
       if (o.t === 'hi'){
-        this.addPeer(o);
+        this.addPeer(o, true);                          // 新しく入ってきた
         this.publishJson('j', { t: 'me', id: this.id, nick: this.nick, since: this.since });
         if (this.isHost()) this.sendWorld(o.id);            // 先にいた人が世界を渡す
       } else if (o.t === 'me'){
-        this.addPeer(o);
+        this.addPeer(o, false);                         // もともといた人の返事
       } else if (o.t === 'bye'){
         this.removePeer(o.id);
       } else if (o.t === 'world'){
@@ -3256,7 +2935,10 @@ const Net = {
 
   onState: function(id, p){
     let q = this.peers[id];
-    if (!q){ q = this.addPeer({ id: id, nick: 'だれか', since: Date.now() }); }
+    if (!q){
+      const late = (performance.now() - this.connAt) > 5000;
+      q = this.addPeer({ id: id, nick: 'だれか', since: Date.now() }, late);
+    }
     const dv = new DataView(p.buffer, p.byteOffset, p.byteLength);
     q.tx = dv.getInt16(3) / 32; q.ty = dv.getInt16(5) / 32; q.tz = dv.getInt16(7) / 32;
     q.tyaw = dv.getInt16(9) / 5000;
@@ -3278,9 +2960,13 @@ const Net = {
     }
     return true;
   },
-  addPeer: function(o){
+  addPeer: function(o, announce){
     let q = this.peers[o.id];
     if (!q){
+      if (announce){                                     // 新しく入ってきた人だけ知らせる
+        Snd.join();
+        toast((o.nick || 'だれか') + ' さんが来ました');
+      }
       const shirt = SHIRTS[Math.abs(o.id) % SHIRTS.length];
       const model = makeMaikkii(shirt);
       freezeMatrices(model);
@@ -3308,6 +2994,8 @@ const Net = {
     if (!q) return;
     scene.remove(q.model);
     delete this.peers[id];
+    Snd.leave();
+    toast(q.nick + ' さんが帰りました');
     this.updatePanel();
   },
   clearPeers: function(){
@@ -3345,10 +3033,12 @@ const Net = {
       const sp = Math.hypot(q.vx, q.vz);
       animateHumanoid(m, sp, dt, { pitch: q.pitch, airborne: !(q.flags & 1) && !(q.flags & 2),
                                    swing: (q.flags & 4) ? 1 : 0 });
-      const dist = Math.hypot(q.x - player.x, q.z - player.z);
-      q.tag.visible = dist < 70;
-      const s = 0.62 * Math.max(1, Math.min(3.2, dist / 12));   // 遠くても読める大きさに
+      // 名札は距離に関係なく出し、遠いほど大きくして画面上の見え方をそろえる
+      const dx = q.x - player.x, dy = q.y - player.y, dz = q.z - player.z;
+      const dist = Math.min(260, Math.sqrt(dx*dx + dy*dy + dz*dz));
+      const s = 0.62 * Math.pow(Math.max(1, dist / 12), 0.8);
       q.tag.scale.set(q.tag.userData.ratio * s, s, 1);
+      q.tag.position.y = 1.95 + s * 0.55;                       // 頭の上に浮かせる
       q.tag.updateMatrix ? q.tag.updateMatrix() : 0;
     }
   },
@@ -3530,7 +3220,7 @@ const loadTxt = document.getElementById('loadtxt');
 const startBtn = document.getElementById('start');
 const resetBtn = document.getElementById('reset');
 const barEl = document.getElementById('bar');
-let resetArmed = false;
+let resetArmed = false, purgeFace = false;
 
 let ci = 0, meshDone = null;
 const total = CX * CZ;
@@ -3582,8 +3272,9 @@ function boot(){
         hotIndex = Math.max(0, Math.min(HOTBAR.length - 1, p.slot | 0));
       } else spawn();
       if (isFinite(save.t)) time = save.t;
-      if (typeof save.f === 'string' && save.f.indexOf('data:image') === 0){
-        faceShot = save.f; applyFace(faceShot);
+      if (typeof save.f === 'string'){
+        save.f = null; Store.dirty = true;      // 以前の写真は読み込まず、保存からも消す
+        purgeFace = true;
       }
       restoreMobs(save.m);
       document.getElementById('broke').textContent = player.broke;
@@ -3614,7 +3305,7 @@ function boot(){
       startBtn.style.display = 'block';
       document.getElementById('howto').style.display = 'block';
       resetBtn.style.display = Store.mode === 'none' ? 'none' : 'block';
-      updateFaceButtons();
+      if (purgeFace) Store.write();            // 残っていた写真をすぐ消す
       document.getElementById('netbox').style.display = 'block';
       document.getElementById('mynick').textContent = Net.nick;
       const on = Net.wanted();
@@ -3642,8 +3333,6 @@ function newWorld(){
   overlay.classList.remove('hide');
   startBtn.style.display = 'none';
   resetBtn.style.display = 'none';
-  document.getElementById('facebtn').style.display = 'none';
-  document.getElementById('faceclear').style.display = 'none';
   loadTxt.textContent = '新しい島をつくっています…';
   startMeshing(function(){
     loadTxt.textContent = 'まっさらな島ができました（住人 ' + MOBS.length + '人）';
@@ -3652,7 +3341,6 @@ function newWorld(){
     resetBtn.textContent = '新しい島を作る';
     resetBtn.style.display = 'block';
     resetArmed = false;
-    updateFaceButtons();
     Store.write();
   });
 }
