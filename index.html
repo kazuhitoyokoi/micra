@@ -144,6 +144,15 @@
   }
   .subbtn:hover{border-color:var(--maikkii);color:var(--maikkii);}
   .subbtn:focus-visible{outline:3px solid var(--mint);outline-offset:4px;}
+  #recbox{
+    position:absolute;left:50%;top:64px;transform:translateX(-50%);
+    display:none;pointer-events:none;
+    background:rgba(226,64,47,.92);color:#fff;
+    border:3px solid var(--paper);box-shadow:5px 5px 0 rgba(0,0,0,.4);
+    padding:8px 18px;font-size:13px;letter-spacing:.06em;white-space:nowrap;
+  }
+  #recbox b{font-size:17px;}
+  #recbox kbd{background:var(--paper);color:var(--ink);padding:0 5px;font:inherit;font-size:11px;font-weight:700;}
   #netbox{
     max-width:min(520px,88vw);font-size:12px;line-height:1.9;text-align:left;
     background:rgba(20,19,38,.86);
@@ -223,6 +232,7 @@
     <kbd>E</kbd>ブタ　<kbd>R</kbd>なかま<br>
     <kbd>G</kbd>カエル（<kbd>Shift</kbd>で10体）<br>
     <kbd>C</kbd>全員帰す　<kbd>K</kbd>保存<br>
+    <kbd>T</kbd>声を送る（10秒）<br>
     <kbd>左</kbd>で仲間を叩くとふり向く<br>
     <kbd>M</kbd>音楽　<kbd>N</kbd>効果音
   </div>
@@ -230,6 +240,7 @@
   <div id="slotname"></div>
   <div id="hotbar" style="display:none"></div>
   <div id="bubble"></div>
+  <div id="recbox">● 録音中　のこり <b id="recleft">10</b> 秒　もう一度 <kbd>T</kbd> で送信</div>
 
   <div class="touch" id="stick"><i></i></div>
   <button class="touch tbtn" id="bJump">ジャンプ</button>
@@ -256,7 +267,8 @@
     </div>
     <div class="netrow"><span class="netlbl">状態</span><span id="netstat">オフライン</span></div>
     <div class="netrow"><span class="netlbl">いる人</span><span id="netpeers">ひとり</span></div>
-    <div class="nethint">このページを開いた人はみんな同じワールドに入ります。地形の変化とお互いの姿がそのまま共有されます。</div>
+    <div class="nethint">このページを開いた人はみんな同じワールドに入ります。地形の変化とお互いの姿がそのまま共有されます。<br>
+      Tキーの音声は録音した10秒間だけをその場で全員へ送るもので、保存も記録もされません。</div>
   </div>
 
  <div id="howto" style="display:none">
@@ -269,6 +281,7 @@
     （<b>Shift</b>を押しながらで10体ずつ、<b>C</b>で全員お帰りいただけます）。<br>
     こわした場所も建てたものも自動で保存され、閉じても次に開いたとき続きから遊べます。<br>
     このページを開いた人はみんな同じワールドに入り、地形の変化とお互いの姿が同期します。<br>
+    <b>T</b>を押すと10秒間マイクで録音し、いま同じワールドにいる全員に声が届きます。<br>
     音が出ます。うるさいときは <b>M</b>（音楽）と <b>N</b>（効果音）で切り替えてください。
   </div>
 </div>
@@ -979,6 +992,12 @@ const Snd = {
       o.connect(g); g.connect(this.sfx);
       o.start(t); o.stop(t + 0.6);
     }
+  },
+  // 声が届いた合図
+  voiceCue: function(){
+    if (!this.ready || !this.sfxOn) return;
+    this.tone(880, 1180, 0.06, 'sine', 0.08);
+    this.tone(1180, 1480, 0.07, 'sine', 0.06, 0.06);
   },
   // 誰かが去ったときの短い音
   leave: function(){
@@ -2438,6 +2457,7 @@ document.addEventListener('keydown', function(e){
   if (e.code === 'KeyE'){ callMob('pig', e.shiftKey ? 10 : 1); }
   if (e.code === 'KeyR'){ callMob('maikkii', e.shiftKey ? 10 : 1); }
   if (e.code === 'KeyG'){ callMob('frog', e.shiftKey ? 10 : 1); }
+  if (e.code === 'KeyT'){ Voice.toggle(); }
   if (e.code === 'KeyC'){ sendHome(); }
   if (e.code === 'KeyK' || (e.code === 'KeyS' && (e.ctrlKey || e.metaKey))){
     e.preventDefault();
@@ -2676,12 +2696,195 @@ function nameSprite(text){
   return sp;
 }
 
+/* ---- 音声メッセージ（押すと10秒録音してみんなに届く） ---- */
+const VOICE_SEC = 10;               // 録音の長さ
+const VOICE_CHUNK = 3200;           // 1通あたりのバイト数
+const VOICE_MAX = 200000;           // これより大きいと送らない
+const VOICE_MIME = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', 'audio/ogg;codecs=opus'];
+
+const Voice = {
+  rec: null, stream: null, chunks: [], busy: false, timer: null, left: 0, seq: 0,
+  inbox: {}, queue: [], playing: false,
+
+  ok: function(){
+    return !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia && window.MediaRecorder);
+  },
+  ui: function(on){
+    const el = document.getElementById('recbox');
+    if (el) el.style.display = on ? 'block' : 'none';
+    const n = document.getElementById('recleft');
+    if (n) n.textContent = this.left;
+  },
+
+  // 押すたびに開始／終了
+  toggle: function(){
+    if (this.busy){ this.stop(); return; }
+    if (!Net.up){ toast('つながっていないので声は送れません'); return; }
+    if (!this.ok()){ toast('このブラウザでは録音できません'); return; }
+    const self = this;
+    this.busy = true;
+    toast('マイクの使用を許可してください');
+    navigator.mediaDevices.getUserMedia({ audio: true }).then(function(st){
+      self.stream = st;
+      let idx = -1;
+      for (let i = 0; i < VOICE_MIME.length; i++){
+        if (window.MediaRecorder.isTypeSupported && window.MediaRecorder.isTypeSupported(VOICE_MIME[i])){ idx = i; break; }
+      }
+      const opt = { audioBitsPerSecond: 16000 };      // 声だけなので低ビットレートで十分
+      if (idx >= 0) opt.mimeType = VOICE_MIME[idx];
+      let r;
+      try { r = new MediaRecorder(st, opt); }
+      catch(e){
+        try { r = new MediaRecorder(st); idx = -1; }
+        catch(e2){ self.cleanup(); toast('録音を開始できませんでした'); return; }
+      }
+      self.rec = r; self.chunks = [];
+      r.ondataavailable = function(ev){ if (ev.data && ev.data.size) self.chunks.push(ev.data); };
+      r.onstop = function(){
+        const type = r.mimeType || (idx >= 0 ? VOICE_MIME[idx] : 'audio/webm');
+        const blob = new Blob(self.chunks, { type: type });
+        self.cleanup();
+        self.sendBlob(blob, idx);
+      };
+      try { r.start(); } catch(e){ self.cleanup(); toast('録音を開始できませんでした'); return; }
+      Snd.voiceCue();
+      self.left = VOICE_SEC;
+      self.ui(true);
+      self.timer = setInterval(function(){
+        self.left--;
+        self.ui(true);
+        if (self.left <= 0) self.stop();
+      }, 1000);
+    }).catch(function(err){
+      self.busy = false;
+      self.ui(false);
+      toast('マイクを使えません（' + (err && err.name ? err.name : 'エラー') + '）');
+    });
+  },
+  stop: function(){
+    if (this.timer){ clearInterval(this.timer); this.timer = null; }
+    this.ui(false);
+    if (this.rec && this.rec.state !== 'inactive'){
+      try { this.rec.stop(); return; } catch(e){}
+    }
+    this.cleanup();
+  },
+  cleanup: function(){
+    if (this.timer){ clearInterval(this.timer); this.timer = null; }
+    if (this.stream){
+      const t = this.stream.getTracks ? this.stream.getTracks() : [];
+      for (let i = 0; i < t.length; i++) t[i].stop();   // マイクをすぐ解放する
+      this.stream = null;
+    }
+    this.rec = null; this.busy = false;
+    this.ui(false);
+  },
+
+  sendBlob: function(blob, idx){
+    const self = this;
+    if (blob.size > VOICE_MAX){ toast('声が大きすぎて送れませんでした'); return; }
+    try {
+      const fr = new FileReader();
+      fr.onload = function(){ self.sendBytes(new Uint8Array(fr.result), idx); };
+      fr.onerror = function(){ toast('音声を読み取れませんでした'); };
+      fr.readAsArrayBuffer(blob);
+    } catch(e){ toast('音声を読み取れませんでした'); }
+  },
+  // こま切れにして中優先度で送る（位置やブロックの後、世界データより先）
+  sendBytes: function(bytes, idx){
+    if (!Net.up){ toast('つながっていないので送れません'); return 0; }
+    if (bytes.length > VOICE_MAX){ toast('声が大きすぎて送れませんでした'); return 0; }
+    const total = Math.max(1, Math.ceil(bytes.length / VOICE_CHUNK));
+    if (total > 255){ toast('声が長すぎて送れませんでした'); return 0; }
+    const seq = (this.seq = (this.seq + 1) & 255);
+    for (let k = 0; k < total; k++){
+      const part = bytes.subarray(k*VOICE_CHUNK, Math.min(bytes.length, (k+1)*VOICE_CHUNK));
+      const b = new Uint8Array(9 + part.length);
+      b[0] = 4;
+      b[1] = (Net.id >>> 24) & 255; b[2] = (Net.id >>> 16) & 255;
+      b[3] = (Net.id >>> 8) & 255;  b[4] = Net.id & 255;
+      b[5] = seq; b[6] = k; b[7] = total; b[8] = (idx + 1) & 255;
+      b.set(part, 9);
+      Net.mid.push([Net.topic('v'), b]);
+    }
+    toast('声を送りました（' + Math.max(1, Math.round(bytes.length/1024)) + 'KB）');
+    return total;
+  },
+
+  onChunk: function(p){
+    const id = ((p[1] << 24) | (p[2] << 16) | (p[3] << 8) | p[4]) >>> 0;
+    if (id === (Net.id >>> 0)) return;                 // 自分の声は鳴らさない
+    const key = id + ':' + p[5];
+    let e = this.inbox[key];
+    if (!e) e = this.inbox[key] = { parts: [], got: 0, total: p[7], mime: p[8], at: performance.now() };
+    if (!e.parts[p[6]]){ e.parts[p[6]] = new Uint8Array(p.subarray(9)); e.got++; }
+    if (e.got >= e.total){
+      delete this.inbox[key];
+      let len = 0;
+      for (let i = 0; i < e.parts.length; i++) if (e.parts[i]) len += e.parts[i].length;
+      const all = new Uint8Array(len);
+      let o = 0;
+      for (let i = 0; i < e.parts.length; i++){
+        if (!e.parts[i]) continue;
+        all.set(e.parts[i], o); o += e.parts[i].length;
+      }
+      const peer = Net.peers[id];
+      this.enqueue(all, e.mime, peer ? peer.nick : 'だれか');
+    }
+    const now = performance.now();                     // 届ききらなかった分を捨てる
+    for (const k in this.inbox) if (now - this.inbox[k].at > 20000) delete this.inbox[k];
+  },
+
+  // 複数届いても重ならないよう順番に鳴らす
+  enqueue: function(bytes, mimeIdx, nick){
+    if (this.queue.length > 6) this.queue.shift();
+    this.queue.push([bytes, mimeIdx, nick]);
+    if (!this.playing) this.next();
+  },
+  next: function(){
+    const item = this.queue.shift();
+    if (!item){ this.playing = false; return; }
+    this.playing = true;
+    const self = this;
+    const done = function(){ setTimeout(function(){ self.next(); }, 200); };
+    toast(item[2] + ' さんの声');
+    if (!Snd.sfxOn){ done(); return; }                 // 効果音オフなら鳴らさない
+    Snd.voiceCue();
+    const type = VOICE_MIME[item[1] - 1] || 'audio/webm';
+    try {
+      if (Snd.ready && Snd.ctx.decodeAudioData){
+        const ab = item[0].buffer.slice(item[0].byteOffset, item[0].byteOffset + item[0].byteLength);
+        Snd.ctx.decodeAudioData(ab, function(buf){
+          const src = Snd.ctx.createBufferSource();
+          src.buffer = buf;
+          src.connect(Snd.master);
+          src.onended = done;
+          src.start(Snd.ctx.currentTime + 0.15);
+        }, function(){ self.viaTag(item[0], type, done); });
+        return;
+      }
+    } catch(e){}
+    this.viaTag(item[0], type, done);
+  },
+  // 形式が合わずデコードできないときは音声要素で鳴らす
+  viaTag: function(bytes, type, done){
+    try {
+      const url = URL.createObjectURL(new Blob([bytes], { type: type }));
+      const a = new Audio(url);
+      const fin = function(){ try { URL.revokeObjectURL(url); } catch(e){} done(); };
+      a.onended = fin; a.onerror = fin;
+      const pr = a.play();
+      if (pr && pr.catch) pr.catch(fin);
+    } catch(e){ done(); }
+  }
+};
+
 /* ---- 同期本体 ---- */
 const Net = {
   on: false, up: false, status: 'オフライン',
   client: null, room: '', id: 0, nick: '', since: 0,
   peers: {}, host: 0, adopted: false, waitWorld: 0, connAt: 0,
-  editQ: new Map(), lo: [], stateAcc: 0, editAcc: 0, loAcc: 0, seq: 0,
+  editQ: new Map(), mid: [], lo: [], stateAcc: 0, editAcc: 0, midAcc: 0, loAcc: 0, seq: 0,
   rate: 0, rateLast: 0, rateT: 0,
   snap: null, sent: 0, recv: 0, applyQ: [],
 
@@ -2766,14 +2969,14 @@ const Net = {
       const sk = st && (st.socket || st._socket);
       if (sk && typeof sk.bufferedAmount === 'number') b = sk.bufferedAmount;
     } catch(e){}
-    return Math.max(b, this.rateLast > 24576 ? 65536 : 0);
+    return Math.max(b, this.rateLast > 49152 ? 65536 : 0);
   },
   send: function(topic, u8){
     if (!this.up || !this.client) return;
     try { this.client.publish(topic, u8, { qos: 0 }); } catch(e){ return; }
     this.sent += u8.length; this.rate += u8.length;
   },
-  stop: function(){ this.on = false; this.disconnect(); this.setStatus('オフライン'); },
+  stop: function(){ this.on = false; Voice.stop(); this.disconnect(); this.setStatus('オフライン'); },
 
   setStatus: function(s){
     this.status = s;
@@ -2862,6 +3065,15 @@ const Net = {
     if (this.stateAcc >= rate){ this.stateAcc = 0; this.publishState(); }
     this.editAcc += dt;
     if (this.editAcc >= 0.12){ this.editAcc = 0; this.flushEdits(); }
+    // 声は位置やブロックの次、世界データより先に流す
+    if (this.mid.length && buf < 49152){
+      this.midAcc += dt;
+      if (this.midAcc >= 0.03){
+        this.midAcc = 0;
+        const v = this.mid.shift();
+        this.send(v[0], v[1]);
+      }
+    }
     if (this.lo.length && buf < 16384){
       this.loAcc += dt;
       if (this.loAcc >= 0.04){
@@ -2919,6 +3131,10 @@ const Net = {
         const x = (i / (WZ*WY)) | 0, r = i % (WZ*WY);
         this.applyQ.push([x, r % WY, (r / WY) | 0, v]);
       }
+      return;
+    }
+    if (type === 4){                                        // 声のかたまり
+      Voice.onChunk(p);
       return;
     }
     if (type === 3){                                        // 世界のかたまり
