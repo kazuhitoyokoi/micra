@@ -162,6 +162,13 @@
   #netbox b{color:var(--gold);}
   #netbox .subbtn{margin-top:0;padding:5px 12px;font-size:11px;}
   .nethint{font-size:10px;opacity:.5;line-height:1.6;margin-top:4px;}
+  #nettest{
+    display:none;white-space:pre-wrap;font-size:11px;line-height:1.7;
+    user-select:text;-webkit-user-select:text;cursor:text;
+    background:#0d0c18;border:2px solid rgba(246,241,228,.25);
+    padding:8px;margin:0;max-height:34vh;overflow:auto;color:var(--mint);
+    font-family:inherit;
+  }
   .btnrow{display:flex;gap:10px;flex-wrap:wrap;justify-content:center;align-items:center;}
   .btnrow .subbtn{margin-top:0;}
   .startbtn.small{font-size:14px;padding:10px 26px;}
@@ -267,6 +274,11 @@
     </div>
     <div class="netrow"><span class="netlbl">状態</span><span id="netstat">オフライン</span></div>
     <div class="netrow"><span class="netlbl">いる人</span><span id="netpeers">ひとり</span></div>
+    <div class="netrow">
+      <button class="subbtn" id="nettestbtn">通信を実測する</button>
+      <button class="subbtn" id="netcopy" style="display:none">結果をコピー</button>
+    </div>
+    <pre id="nettest"></pre>
     <div class="nethint">このページを開いた人はみんな同じワールドに入ります。地形の変化とお互いの姿がそのまま共有されます。<br>
       Tキーの音声は録音した10秒間だけをその場で全員へ送るもので、保存も記録もされません。</div>
   </div>
@@ -2515,6 +2527,8 @@ function talk(text){
   } catch(e){}
 }
 
+document.getElementById('nettestbtn').addEventListener('click', function(){ NetTest.run(); });
+document.getElementById('netcopy').addEventListener('click', function(){ NetTest.copy(); });
 document.getElementById('netoff').addEventListener('click', function(){
   if (Net.on){ Net.setWanted(false); Net.stop(); this.textContent = 'みんなで遊ぶ'; }
   else { Net.setWanted(true); Net.connect(); this.textContent = 'ひとりで遊ぶ'; }
@@ -2684,7 +2698,9 @@ function pause(){
 
 // タブを閉じる・隠すときにも保存
 window.addEventListener('beforeunload', function(){ if (running) Store.write(); });
-document.addEventListener('visibilitychange', function(){ if (document.hidden && running) Store.write(); });
+document.addEventListener('visibilitychange', function(){
+  if (document.hidden && running) Store.write();
+});
 document.getElementById('start').addEventListener('click', start);
 
 /* =========================================================
@@ -2693,6 +2709,30 @@ document.getElementById('start').addEventListener('click', start);
 const NET_URL  = 'wss://public:public@public.cloud.shiftr.io/mqtt';
 const NET_ROOT = 'mkw';                       // トピックの先頭
 const NET_ROOM = 'world';                     // みんな共通のワールド
+// shiftr.io の公式仕様（docs/broker/mqtt-interface）にもとづく構成
+//   ・MQTT 3.1.1 のサブセットのみ。MQTT 5 は未対応（No Local・Topic Alias・User Property
+//     ・Session Expiry・Maximum Packet Size などの v5 機能は使えない）
+//   ・Retained は対応（ただしインスタンス再起動で消える）／Clean Session とセッション永続は無効
+//   ・制限：ペイロード 64KB／トピック長 128文字／購読 100件／clientId 64文字／keepalive 1秒〜5分
+const BROKER_MAX_PAYLOAD = 60000;             // 64KB 制限に対する安全側の値
+const BROKER_MAX_SUBS = 100;
+// MQTT 5 の機能は実測して選別した
+//   採用   No Local（受信量 998→151B/秒）
+//          遺言（切断検知 6秒超→0ms）
+//          保持メッセージで世界の素性を共有（全員抜けても世界が継続）
+//          宛先専用トピックでの世界の受け渡し（無関係な人の受信 5.6KB→0）
+//          最大パケット長への追従（1KB制限のブローカーで 0/1066→1013/1013）
+//          clientId をタブごとに分ける（2タブで 片方が切断→両方つながる）
+//          保持メッセージの陳腐化対策（島を作り直すと地形一致 24/225→225/225）
+//   不採用 QoS1（WebSocket上では欠落0で差が出ず）
+//          セッション保持（効果を確認できず・公開ブローカーに痕跡が残る）
+//          Topic Alias（削減2%）
+//          名簿の保持メッセージ化（短縮14ms・参加時1回のみ）
+//          User Property で送り主IDを運ぶ（+33%）
+//          キープアライブ短縮（手元の12秒判定が先に効くため差なし 5941→5942ms）
+//          QoS2（1通ごとに4往復の確認手順が増えるだけで欠落は0のまま）
+//          Content Type（1KBの通信で+3%、15Bの位置情報で+80%）
+//          Subscription Identifier（振り分けの短縮は毎秒0.009ms）
 
 /* ---- MQTT.js を CDN から読み込む（公式配布は npm ミラー） ---- */
 const MQTT_CDN = [
@@ -2877,11 +2917,12 @@ const Voice = {
   sendBytes: function(bytes, idx){
     if (!Net.up){ toast('つながっていないので送れません'); return 0; }
     if (bytes.length > VOICE_MAX){ toast('声が大きすぎて送れませんでした'); return 0; }
-    const total = Math.max(1, Math.ceil(bytes.length / VOICE_CHUNK));
+    const CH = Math.min(VOICE_CHUNK, Net.voiceN || VOICE_CHUNK);
+    const total = Math.max(1, Math.ceil(bytes.length / CH));
     if (total > 255){ toast('声が長すぎて送れませんでした'); return 0; }
     const seq = (this.seq = (this.seq + 1) & 255);
     for (let k = 0; k < total; k++){
-      const part = bytes.subarray(k*VOICE_CHUNK, Math.min(bytes.length, (k+1)*VOICE_CHUNK));
+      const part = bytes.subarray(k*CH, Math.min(bytes.length, (k+1)*CH));
       const b = new Uint8Array(9 + part.length);
       b[0] = 4;
       b[1] = (Net.id >>> 24) & 255; b[2] = (Net.id >>> 16) & 255;
@@ -2964,6 +3005,168 @@ const Voice = {
   }
 };
 
+/* ---- 実ブローカーの能力を測る（お使いのブラウザから本物の通信で確認します） ---- */
+const NetTest = {
+  busy: false, wait: null, lines: [],
+  print: function(s){
+    this.lines.push(s);
+    const el = document.getElementById('nettest');
+    if (el){ el.style.display = 'block'; el.textContent = this.lines.join('\n'); }
+    const b = document.getElementById('netcopy');
+    if (b) b.style.display = 'inline-block';
+  },
+  // そのまま貼り付けられる形にまとめる
+  report: function(){
+    const head = [
+      '# マイッキーワールド 通信実測',
+      '日時: ' + new Date().toString(),
+      'ブローカー: ' + NET_URL.replace(/\/\/[^@]*@/, '//'),
+      'プロトコル: MQTT 3.1.1 (protocolVersion 4) / 構成レベル ' + Net.level +
+        ' / ライブラリ: ' + (window.mqtt && window.mqtt.version ? 'MQTT.js ' + window.mqtt.version : 'MQTT.js'),
+      '接続: ' + (Net.up ? 'あり' : 'なし') +
+        ' / 同じ世界にいる人: ' + Object.keys(Net.peers).length + '人' +
+        ' / 役割: ' + (Net.isHost() ? 'ホスト' : 'ゲスト'),
+      '住人: ' + MOBS.length + '体 / 手を加えたブロック: ' + edits.size + 'マス',
+      'ブラウザ: ' + (navigator.userAgent || '不明'),
+      ''
+    ];
+    return head.concat(this.lines).join('\n');
+  },
+  copy: function(){
+    const txt = this.report();
+    const btn = document.getElementById('netcopy');
+    const done = function(ok){
+      if (!btn) return;
+      btn.textContent = ok ? 'コピーしました' : '選択してコピーしてください';
+      setTimeout(function(){ btn.textContent = '結果をコピー'; }, 2200);
+    };
+    let p = null;
+    try { if (navigator.clipboard && navigator.clipboard.writeText) p = navigator.clipboard.writeText(txt); } catch(e){}
+    if (p && p.then){ p.then(function(){ done(true); }, function(){ done(fallback()); }); return; }
+    done(fallback());
+    function fallback(){
+      try {
+        const ta = document.createElement('textarea');
+        ta.value = txt;
+        ta.style.position = 'fixed'; ta.style.left = '-1000px'; ta.style.top = '0';
+        document.body.appendChild(ta);
+        ta.focus(); ta.select(); ta.setSelectionRange(0, txt.length);
+        const ok = document.execCommand('copy');
+        document.body.removeChild(ta);
+        return ok;
+      } catch(e){ return false; }
+    }
+  },
+  grab: function(topic, p){                        // テスト用トピックは通常処理に渡さない
+    if (!this.busy) return false;
+    if (topic.indexOf(Net.topic('t/')) !== 0 && topic.indexOf(Net.topic('t2/')) !== 0) return false;
+    if (this.wait && this.wait.topic === topic){
+      const w = this.wait; this.wait = null;
+      clearTimeout(w.timer);
+      w.res({ ok: true, p: p, dt: performance.now() - w.t0 });
+    } else if (this.bulk && this.bulkPrefix && topic.indexOf(this.bulkPrefix) === 0){
+      this.bulk();
+    }
+    return true;
+  },
+  expect: function(topic, ms){
+    const self = this;
+    return new Promise(function(res){
+      const w = { topic: topic, t0: performance.now(), res: res };
+      w.timer = setTimeout(function(){ if (self.wait === w){ self.wait = null; res({ ok: false }); } }, ms);
+      self.wait = w;
+    });
+  },
+  pub: function(topic, payload, opts){
+    return new Promise(function(res){
+      let done = false;
+      const t = setTimeout(function(){ if (!done){ done = true; res(false); } }, 6000);
+      try {
+        Net.client.publish(topic, payload, opts || { qos: 0 }, function(err){
+          if (!done){ done = true; clearTimeout(t); res(!err); }
+        });
+      } catch(e){ if (!done){ done = true; clearTimeout(t); res(false); } }
+    });
+  },
+  sleep: function(ms){ return new Promise(function(r){ setTimeout(r, ms); }); },
+
+  run: async function(){
+    if (this.busy) return;
+    if (!Net.up || !Net.client){ this.lines = ['つながっていないので測定できません']; this.print(''); return; }
+    this.busy = true; this.lines = [];
+    const B = Net.topic('t/' + Net.id);
+    this.print('■ ' + NET_URL.replace(/\/\/[^@]*@/, '//') + ' を実測');
+    try { Net.client.subscribe(B + '/#', { qos: 0 }); } catch(e){}
+    await this.sleep(500);
+
+    // 1) 往復時間（段階ごとに別トピックを使い、取り違えを防ぐ）
+    const rt = [];
+    for (let i = 0; i < 5; i++){
+      const t = B + '/r' + i;
+      const w = this.expect(t, 5000);
+      this.pub(t, new Uint8Array([1]));
+      const r = await w;
+      if (r.ok) rt.push(Math.round(r.dt));
+      await this.sleep(150);
+    }
+    rt.sort(function(a, b){ return a - b; });
+    this.print('往復時間: ' + (rt.length ? (rt[0] + '〜' + rt[rt.length-1] + 'ms（中央 ' +
+               rt[rt.length>>1] + 'ms・' + rt.length + '/5回成功）') : '応答なし'));
+    this.print('自分の送信が戻るか: ' + (rt.length ? '戻る（No Local は未対応）' : '不明'));
+
+    // 2) 確認応答（QoS1 / QoS2）
+    const q1 = await this.pub(B + '/q1', new Uint8Array([3]), { qos: 1 });
+    this.print('QoS1 の確認応答: ' + (q1 ? '返ってくる' : '返らない'));
+
+    // 3) 保持メッセージ（テスト用トピックで直接たしかめる）
+    const RT = Net.topic('t2/' + Net.id + '/keep');
+    const okPub = await this.pub(RT, new Uint8Array([5,5,5]), { qos: 0, retain: true });
+    await this.sleep(400);
+    const w4 = this.expect(RT, 5000);
+    try { Net.client.subscribe(Net.topic('t2/' + Net.id + '/#'), { qos: 0 }); } catch(e){}
+    const r4 = await w4;
+    this.print('保持メッセージ: ' + (r4.ok ? '新しい購読に届く（' + Math.round(r4.dt) + 'ms）＝使える'
+               : (okPub ? '届かない（このブローカーでは使えない）' : '送信できなかった')));
+    await this.pub(RT, new Uint8Array(0), { qos: 0, retain: true });      // 後始末
+    try { Net.client.unsubscribe(Net.topic('t2/' + Net.id + '/#')); } catch(e){}
+    if (Net.gotRetained >= 0)
+      this.print('　合流時にも接続 ' + Net.gotRetained + 'ms 後に世界情報が届いています');
+
+    // 4) 大きなペイロード（公式の上限は64KB）
+    for (const size of [16000, 60000]){
+      const t = B + '/big' + size;
+      const w5 = this.expect(t, 10000);
+      this.pub(t, new Uint8Array(size));
+      const r5 = await w5;
+      this.print(Math.round(size/1000) + 'KB の往復: ' + (r5.ok ? Math.round(r5.dt) + 'ms' : '届かない'));
+      if (!r5.ok) break;
+      await this.sleep(200);
+    }
+
+    // 5) まとめ送りの速さ
+    const N = 30, unit = new Uint8Array(1000);
+    let got = 0;
+    const t0 = performance.now();
+    const self = this;
+    this.bulkPrefix = B + '/bulk';
+    const fin = new Promise(function(res){
+      self.bulk = function(){ if (++got >= N) res(); };
+      setTimeout(res, 12000);
+    });
+    for (let i = 0; i < N; i++) this.pub(B + '/bulk' + i, unit);
+    await fin;
+    const el = (performance.now() - t0) / 1000;
+    this.bulk = null; this.bulkPrefix = null;
+    this.print('1KB×' + N + '通: ' + got + '通が ' + el.toFixed(2) + '秒で往復（約 ' +
+               Math.round(got / Math.max(0.01, el)) + '通/秒・' +
+               Math.round(got * 1000 / Math.max(0.01, el) / 1024) + 'KB/秒）');
+
+    try { Net.client.unsubscribe(B + '/#'); } catch(e){}
+    this.print('この接続の通信量: 送信 ' + (Net.sent/1024).toFixed(1) + 'KB / 受信 ' + (Net.recv/1024).toFixed(1) + 'KB');
+    this.busy = false;
+  }
+};
+
 /* ---- 優先度の計算に使う道具 ---- */
 // 地表からどれだけ埋まっているか（見えない場所は後回しにする）
 function depthBelowSurface(x, y, z){
@@ -2994,10 +3197,12 @@ const _pos3 = [0,0,0];
 const Net = {
   on: false, up: false, status: 'オフライン',
   client: null, room: '', id: 0, nick: '', since: 0,
-  peers: {}, host: 0, adopted: false, waitWorld: 0, connAt: 0,
+  peers: {}, host: 0, adopted: false, waitWorld: 0, connAt: 0, level: 2, everUp: false, recent: {},
+  gotRetained: -1,
   editQ: new Map(), mid: [], lo: [], stateAcc: 0, editAcc: 0, midAcc: 0, loAcc: 0, seq: 0,
   rate: 0, rateLast: 0, rateT: 0,
   feed: null, recvTotal: 0, recvGot: 0, sent: 0, recv: 0, applyQ: [],
+  maxPacket: BROKER_MAX_PAYLOAD, feedN: 300, mobN: 110, voiceN: 3200,
   rmobs: {}, mobSeq: 0, mobGen: 0, wasHost: true, feedAcc: 0, mobAcc: 0,
 
   init: function(){
@@ -3017,6 +3222,22 @@ const Net = {
     try { window.localStorage.setItem('maikkii-net', v ? 'on' : 'off'); } catch(e){}
   },
   topic: function(sub){ return NET_ROOT + '/' + this.room + '/' + sub; },
+  // タブごとに別のIDにする（同じIDで2か所からつなぐとブローカーが先客を切るため）
+  clientId: function(){
+    if (!this._cid){
+      this._cid = 'mkw-' + this.id.toString(36) + '-'
+                + ((Math.random()*1e9)|0).toString(36) + Date.now().toString(36).slice(-4);
+    }
+    return this._cid;
+  },
+  // 購読。宛先別トピックにより、他人あての世界データは受け取らない
+  subs: function(){
+    if (this.level <= 0) return { [this.topic('#')]: { qos: 0 } };
+    const o = {};
+    const list = ['p/#', 'm', 'b', 'j', 'meta', 'v', 'w/' + this.id, 's/' + this.id];
+    for (let i = 0; i < list.length && i < BROKER_MAX_SUBS; i++) o[this.topic(list[i])] = { qos: 0 };
+    return o;
+  },
 
   connect: function(){
     if (!window.WebSocket){ this.setStatus('このブラウザでは同期できません'); return; }
@@ -3029,22 +3250,33 @@ const Net = {
       if (!ok){ self.setStatus('同期ライブラリを読み込めませんでした'); self.on = false; return; }
       self.setStatus('接続中…');
       let c;
-      try {
-        c = window.mqtt.connect(NET_URL, {
-          clientId: 'mkw-' + self.id.toString(36) + '-' + ((Math.random()*1e6)|0).toString(36),
-          clean: true, keepalive: 30, protocolVersion: 4,
-          reconnectPeriod: 4000, connectTimeout: 8000,
-          timerVariant: 'native'          // Web Worker を使わない（制限の厳しい環境でも動くように）
-        });
-      } catch(e){ self.setStatus('接続できませんでした'); return; }
+      const opt = {
+        clientId: self.clientId(),
+        clean: true, keepalive: 30,
+        protocolVersion: 4,               // shiftr.io は MQTT 3.1.1 のみ
+        reconnectPeriod: 4000, connectTimeout: 8000,
+        timerVariant: 'native'            // Web Worker を使わない（制限の厳しい環境でも動くように）
+      };
+      if (self.level >= 1){               // 遺言：タブが突然閉じても相手の画面からすぐ消える
+        const bye = u8str(JSON.stringify({ t: 'bye', id: self.id }));
+        const wp = new Uint8Array(bye.length + 1);
+        wp[0] = 9; wp.set(bye, 1);
+        opt.will = { topic: self.topic('j'), payload: wp, qos: 0, retain: false };
+      }
+      try { c = window.mqtt.connect(NET_URL, opt); }
+      catch(e){ self.setStatus('接続できませんでした'); self.stepDown(); return; }
+      clearTimeout(self._to);             // つながらなければ機能を外して入り直す
+      self._to = setTimeout(function(){ if (self.on && !self.up) self.stepDown(); }, 9000);
       self.client = c;
       c.on('connect', function(){
-        self.up = true;
+        self.up = true; self.everUp = true;
+        clearTimeout(self._to);
         self.connAt = performance.now();
-        c.subscribe(self.topic('#'), { qos: 0 });
+        c.subscribe(self.subs());
         self.setStatus('つながりました');
         self.publishJson('j', { t: 'hi', id: self.id, nick: self.nick, since: self.since,
                                 x: Math.round(player.x), z: Math.round(player.z) });
+        self.metaAcc = 19;                                   // 自分がホストなら間もなく置き直す
         self.waitWorld = 3.5;                                // 誰かが世界をくれるのを待つ
       });
       c.on('message', function(topic, payload){ self.onMessage(topic, payload); });
@@ -3055,9 +3287,19 @@ const Net = {
       });
       c.on('error', function(err){
         self.setStatus('通信エラー' + (err && err.message ? '：' + err.message : ''));
+        if (!self.everUp){ try { c.end(true); } catch(e){} self.stepDown(); }
       });
       c.on('close', function(){ self.up = false; });
     });
+  },
+  // つながらないときは任意機能を1段ずつ外して、確実な構成へ落とす
+  stepDown: function(){
+    clearTimeout(this._to);
+    if (this.level <= 0){ this.setStatus('ブローカーに接続できません（再試行します）'); return; }
+    this.level--;
+    this.setStatus(this.level === 1 ? '購読を単純にして接続し直します' : '最小構成で接続し直します');
+    const self = this;
+    setTimeout(function(){ if (self.on) self.connect(); }, 500);
   },
   disconnect: function(){
     const c = this.client, wasUp = this.up;
@@ -3084,9 +3326,11 @@ const Net = {
     } catch(e){}
     return Math.max(b, this.rateLast > 49152 ? 65536 : 0);
   },
-  send: function(topic, u8){
+  send: function(topic, u8, retain){
     if (!this.up || !this.client) return;
-    try { this.client.publish(topic, u8, { qos: 0 }); } catch(e){ return; }
+    const o = { qos: 0 };
+    if (retain) o.retain = true;
+    try { this.client.publish(topic, u8, o); } catch(e){ return; }
     this.sent += u8.length; this.rate += u8.length;
   },
   stop: function(){ this.on = false; Voice.stop(); this.disconnect(); this.setStatus('オフライン'); },
@@ -3145,13 +3389,17 @@ const Net = {
     const list = [];
     this.editQ.forEach(function(v, i){ list.push({ i: i, v: v, s: self.editScore(i) }); });
     list.sort(function(a, b){ return a.s - b.s; });
-    const cap = Math.min(list.length, 500);                 // 1回あたりの上限
-    for (let s0 = 0; s0 < cap; s0 += 250){
-      const n = Math.min(250, cap - s0);
-      const b = new Uint8Array(3 + n*4);
-      b[0] = 2; b[1] = n >> 8; b[2] = n & 255;
+    const per = Math.max(16, Math.min(250, Math.floor((this.maxPacket - 64) / 4)));
+    const cap = Math.min(list.length, per * 2);             // 1回あたりの上限
+    for (let s0 = 0; s0 < cap; s0 += per){
+      const n = Math.min(per, cap - s0);
+      const b = new Uint8Array(7 + n*4);
+      b[0] = 2;
+      b[1] = (this.id >>> 24) & 255; b[2] = (this.id >>> 16) & 255;
+      b[3] = (this.id >>> 8) & 255;  b[4] = this.id & 255;
+      b[5] = n >> 8; b[6] = n & 255;
       for (let k = 0; k < n; k++){
-        const e = list[s0 + k], p = 3 + k*4;
+        const e = list[s0 + k], p = 7 + k*4;
         b[p] = e.i & 255; b[p+1] = (e.i >> 8) & 255; b[p+2] = (e.i >> 16) & 255; b[p+3] = e.v;
         this.editQ.delete(e.i);
       }
@@ -3163,7 +3411,7 @@ const Net = {
     if (!this.up) return;
     const list = [];
     edits.forEach(function(v, i){ list.push({ i: i, s: 0 }); });
-    this.publishJson('w', { t: 'world', id: this.id, to: to, seed: SEED,
+    this.publishJson('w/' + to, { t: 'world', id: this.id, to: to, seed: SEED,
                             time: Math.round(time), n: list.length,
                             vx: Village.x, vy: Village.y, vz: Village.z,
                             vk: Village.kind, vw: Village.w });
@@ -3187,7 +3435,7 @@ const Net = {
     const q = this.peers[f.to];
     if (!q){ this.feed = null; return false; }               // 相手が居なくなった
     if (q.seen && Math.hypot(q.x - f.sx, q.z - f.sz) > 24) this.sortFeed(q.x, q.z);
-    const n = Math.min(300, f.list.length - f.ptr);
+    const n = Math.min(this.feedN, f.list.length - f.ptr);
     const b = new Uint8Array(6 + n*4);
     b[0] = 3;
     b[1] = (f.to >>> 24) & 255; b[2] = (f.to >>> 16) & 255;
@@ -3198,7 +3446,7 @@ const Net = {
       b[p] = i & 255; b[p+1] = (i >> 8) & 255; b[p+2] = (i >> 16) & 255; b[p+3] = blocks[i];
     }
     f.ptr += n;
-    this.send(this.topic('s'), b);
+    this.send(this.topic('s/' + f.to), b);
     if (f.ptr >= f.list.length) this.feed = null;
     return true;
   },
@@ -3217,7 +3465,7 @@ const Net = {
     }
     if (!arr.length) return;
     arr.sort(function(a, b){ return a.s - b.s; });
-    const n = Math.min(110, arr.length);
+    const n = Math.min(this.mobN, arr.length);
     const b = new Uint8Array(4 + n*11);
     b[0] = 5; b[1] = this.mobGen & 255; b[2] = n >> 8; b[3] = n & 255;
     const dv = new DataView(b.buffer);
@@ -3289,8 +3537,21 @@ const Net = {
     if (host){
       for (const k in this.rmobs){ this.rmobs[k].remote = false; }
       this.rmobs = {};
+      this.publishMeta();
       this.setStatus('この世界のホストになりました');
     }
+  },
+
+  // ホストは世界の素性を保持メッセージとして置いておく（後から来た人が即座に地形を作れる）
+  publishMeta: function(){
+    if (!this.up || !this.isHost()) return;
+    this.metaAcc = 0;
+    const b = u8str(JSON.stringify({ t: 'meta', id: this.id, seed: SEED, time: Math.round(time),
+                                     vx: Village.x, vy: Village.y, vz: Village.z,
+                                     vk: Village.kind, vw: Village.w, at: Date.now() }));
+    const p = new Uint8Array(b.length + 1);
+    p[0] = 9; p.set(b, 1);
+    this.send(this.topic('meta'), p, true);
   },
 
   pump: function(dt){
@@ -3324,6 +3585,10 @@ const Net = {
     if (this.mobAcc >= mobPeriod){ this.mobAcc = 0; this.sendMobs(); }
     this.pruneMobs(dt);
     this.checkRole(dt);
+    if (this.isHost()){
+      this.metaAcc = (this.metaAcc || 0) + dt;
+      if (this.metaAcc >= 20) this.publishMeta();
+    }
 
     if (this.lo.length && buf < 16384){
       this.loAcc += dt;
@@ -3350,6 +3615,7 @@ const Net = {
   /* ---- 受信 ---- */
   onMessage: function(topic, p){
     this.recv += p.length;
+    if (NetTest.grab(topic, p)) return;
     const kind = topic.slice(topic.lastIndexOf('/') + 1);
     const type = p[0];
     if (type === 9){                                        // JSON
@@ -3372,8 +3638,22 @@ const Net = {
         if (!this.isHost()){ clearMobs(); this.rmobs = {}; updateMobCount(); }
       } else if (o.t === 'bye'){
         this.removePeer(o.id);
+      } else if (o.t === 'meta'){
+        if (o.seed === undefined) return;
+        const since = performance.now() - this.connAt;
+        if (since < 3000 && this.gotRetained < 0) this.gotRetained = Math.round(since);
+        // 接続直後に届くのは保持ぶん（過去の世界）。それより後は今いる人からの知らせ
+        const live = (performance.now() - this.connAt) > 3000;
+        if (!this.adopted) this.beginAdopt(o);
+        else if (live && !this.isHost() && (o.seed | 0) !== SEED){
+          toast('世界が作り直されました');
+          this.beginAdopt(o, true);                         // ホストが島を作り直した
+        }
       } else if (o.t === 'world'){
-        if (o.to === this.id) this.beginAdopt(o);
+        if (o.to === this.id){
+          if (!this.adopted || (o.seed | 0) !== SEED) this.beginAdopt(o, true);
+          else { this.recvTotal = o.n || 0; this.recvGot = 0; }
+        }
       }
       return;
     }
@@ -3384,9 +3664,11 @@ const Net = {
       return;
     }
     if (type === 2){                                        // ブロックの変更
-      const n = (p[1] << 8) | p[2];
+      const from = ((p[1] << 24) | (p[2] << 16) | (p[3] << 8) | p[4]) >>> 0;
+      if (from === (this.id >>> 0)) return;                 // 自分が送った分は戻ってきても無視
+      const n = (p[5] << 8) | p[6];
       for (let k = 0; k < n; k++){
-        const q = 3 + k*4;
+        const q = 7 + k*4;
         const i = p[q] | (p[q+1] << 8) | (p[q+2] << 16), v = p[q+3];
         const x = (i / (WZ*WY)) | 0, r = i % (WZ*WY);
         this.applyQ.push([x, r % WY, (r / WY) | 0, v]);
@@ -3449,7 +3731,8 @@ const Net = {
   addPeer: function(o, announce){
     let q = this.peers[o.id];
     if (!q){
-      if (announce){                                     // 新しく入ってきた人だけ知らせる
+      const back = this.recent[o.id] && (performance.now() - this.recent[o.id] < 20000);
+      if (announce && !back){                            // 新しく入ってきた人だけ知らせる
         Snd.join();
         toast((o.nick || 'だれか') + ' さんが来ました');
       }
@@ -3482,6 +3765,7 @@ const Net = {
     q.alive = false; q.trainNext = null; q.frogNext = null;
     scene.remove(q.model);
     delete this.peers[id];
+    this.recent[id] = performance.now();
     Snd.leave();
     toast(q.nick + ' さんが帰りました');
     this.updatePanel();
@@ -3533,8 +3817,9 @@ const Net = {
   },
 
   /* ---- 世界の受け取り ---- */
-  beginAdopt: function(o){
-    if (this.adopted) return;
+  beginAdopt: function(o, force){
+    if (this.adopted && !force) return;
+    if (this.adopted && (o.seed | 0) === SEED) return;      // 同じ世界なら作り直さない
     this.adopted = true;
     this.waitWorld = 0;
     // 種から地形を作り直せばすぐ遊べる。手を加えた場所だけ後から届く
@@ -3811,6 +4096,8 @@ function newWorld(){
     resetBtn.textContent = '新しい島を作る';
     resetBtn.style.display = 'block';
     resetArmed = false;
+    Net.publishMeta();
+    for (const k in Net.peers) Net.sendWorld(Net.peers[k].id, Net.peers[k].x, Net.peers[k].z);
     Store.write();
   });
 }
