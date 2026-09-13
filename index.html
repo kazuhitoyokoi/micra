@@ -2714,6 +2714,15 @@ const NET_ROOM = 'world';                     // みんな共通のワールド
 //     ・Session Expiry・Maximum Packet Size などの v5 機能は使えない）
 //   ・Retained は対応（ただしインスタンス再起動で消える）／Clean Session とセッション永続は無効
 //   ・制限：ペイロード 64KB／トピック長 128文字／購読 100件／clientId 64文字／keepalive 1秒〜5分
+//
+// 実ブローカーでの実測（日本→wss://public.cloud.shiftr.io、Chrome、2026-09-09）
+//   往復 256〜341ms（中央277ms）／1KB×30通は0.59秒＝約51通・50KB毎秒
+//   16KB往復 538ms／60KB往復 1727ms（＝大きい通信ほど不利。実効帯域 40〜60KB/秒）
+//   保持メッセージ 有効（306ms・合流時も303msで到着）／QoS1 の確認応答 あり
+//   No Local は未対応で自分の送信も戻る（送り主IDで自分の分をはじいている）
+// この実測にもとづく調整
+//   ・1通は1.2KB前後に保つ（大きくまとめても速くならない）
+//   ・自分の位置の送信間隔を人数に応じて広げる（1人12通/秒では4人で上限に達するため）
 const BROKER_MAX_PAYLOAD = 60000;             // 64KB 制限に対する安全側の値
 const BROKER_MAX_SUBS = 100;
 // MQTT 5 の機能は実測して選別した
@@ -3203,7 +3212,7 @@ const Net = {
   rate: 0, rateLast: 0, rateT: 0,
   feed: null, recvTotal: 0, recvGot: 0, sent: 0, recv: 0, applyQ: [],
   maxPacket: BROKER_MAX_PAYLOAD, feedN: 300, mobN: 110, voiceN: 3200,
-  rmobs: {}, mobSeq: 0, mobGen: 0, wasHost: true, feedAcc: 0, mobAcc: 0,
+  rmobs: {}, mobSeq: 0, mobGen: 0, wasHost: true, feedAcc: 0, mobAcc: 0, needPop: false, popAcc: 0,
 
   init: function(){
     try { this.nick = window.localStorage.getItem('maikkii-nick') || ''; } catch(e){}
@@ -3541,6 +3550,18 @@ const Net = {
       this.setStatus('この世界のホストになりました');
     }
   },
+  // ホストなのに動物が一匹もいない状態を拾う（世界を引き継いだ直後など）
+  checkPop: function(dt){
+    if (!this.needPop || !this.isHost()){ this.popAcc = 0; return; }
+    this.popAcc = (this.popAcc || 0) + dt;
+    if (this.popAcc < 3) return;
+    this.popAcc = 0; this.needPop = false;
+    if (!MOBS.length){
+      populate(); updateMobCount();
+      if (!Village.ready) Village.start(player.x, player.z);
+      toast('この世界の住人を呼びました');
+    }
+  },
 
   // ホストは世界の素性を保持メッセージとして置いておく（後から来た人が即座に地形を作れる）
   publishMeta: function(){
@@ -3560,7 +3581,13 @@ const Net = {
     if (this.rateT >= 1){ this.rateLast = this.rate; this.rate = 0; this.rateT = 0; }
     const buf = this.buffered();
     // 詰まってきたら自分の位置は間引き、世界の配布は止める
-    const rate = buf > 131072 ? 0.30 : buf > 32768 ? 0.16 : 0.083;
+    // 毎秒51通の実測上限に対し、人数が増えても全体が溢れないようにする
+    const np = Object.keys(this.peers).length;
+    let base = 0.10;                                        // 1〜2人なら毎秒10回
+    if (np >= 3) base = 0.14;
+    if (np >= 5) base = 0.20;
+    if (np >= 8) base = 0.30;
+    const rate = buf > 131072 ? Math.max(0.30, base) : buf > 32768 ? Math.max(0.18, base) : base;
     this.stateAcc += dt;
     if (this.stateAcc >= rate){ this.stateAcc = 0; this.publishState(); }
     this.editAcc += dt;
@@ -3585,6 +3612,7 @@ const Net = {
     if (this.mobAcc >= mobPeriod){ this.mobAcc = 0; this.sendMobs(); }
     this.pruneMobs(dt);
     this.checkRole(dt);
+    this.checkPop(dt);
     if (this.isHost()){
       this.metaAcc = (this.metaAcc || 0) + dt;
       if (this.metaAcc >= 20) this.publishMeta();
@@ -3829,6 +3857,7 @@ const Net = {
     edits.clear(); editsB64 = null;
     if (isFinite(o.time)) time = o.time;
     clearMobs(); this.rmobs = {};
+    this.needPop = true;                                    // 誰も動物を持っていない状態
     if (!running) spawn();
     updateMobCount(); scanWater();
     Village.tasks.length = 0; Village.ready = false;
@@ -3839,6 +3868,10 @@ const Net = {
       Village.makeTasks(); Village.ready = true;
     }
     Store.dirty = true;
+    if (this.isHost()){                                     // ホストなら自分で住人を用意する
+      populate(); updateMobCount(); this.needPop = false;
+      if (!Village.ready) Village.start(player.x, player.z);
+    }
     this.recvTotal = o.n || 0; this.recvGot = 0;
     this.setStatus(this.recvTotal ? '世界を受け取り中… 0%' : '世界を同期しました');
     startMeshing(function(){ toast('世界に合流しました（近くから順に届きます）'); });
